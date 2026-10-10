@@ -19,9 +19,19 @@ export async function readGithubToken() {
   let encrypted;
   try { encrypted = (await readFile(credentialPath, 'utf8')).trim(); } catch {}
   if (encrypted) {
-    const script = `$secure = ConvertTo-SecureString '${encrypted.replaceAll("'", "''")}'; $plain = (New-Object System.Net.NetworkCredential('', $secure)).Password; [Console]::Write($plain)`;
-    const { stdout } = await exec('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true, maxBuffer: 10000 });
-    if (stdout.trim()) return stdout.trim();
+    // Keep even the encrypted credential out of process command lines.
+    const escapedPath = credentialPath.replaceAll("'", "''");
+    const script = `$ErrorActionPreference = 'Stop'; $cipher = (Get-Content -LiteralPath '${escapedPath}' -Raw).Trim(); $secure = ConvertTo-SecureString $cipher; $plain = [System.Net.NetworkCredential]::new('', $secure).Password; [Console]::Write($plain)`;
+    try {
+      const windowsEnvironment = { ...process.env };
+      // PowerShell 7 module paths cannot be loaded by Windows PowerShell 5.1.
+      // Let powershell.exe restore its own built-in modules when Node was
+      // launched from pwsh instead of a normal Command Prompt.
+      delete windowsEnvironment.PSModulePath;
+      const { stdout } = await exec('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true, maxBuffer: 10000, env: windowsEnvironment });
+      if (stdout.trim()) return stdout.trim();
+    } catch { throw new Error('Windows could not decrypt the saved GitHub credential. Run the launcher under the Windows account used for setup.'); }
+    throw new Error('The saved GitHub credential is empty. Run setup-github.cmd again.');
   }
   // Reuse an existing Git credential, without starting an interactive login.
   try {
