@@ -15,7 +15,8 @@ try { connection = JSON.parse(sessionStorage.getItem(storageKey)); } catch {}
 if (location.hash) history.replaceState(null, '', location.pathname + location.search);
 connection ||= { bridge: localPage ? location.origin : '', key: '' };
 if (connection.expiresAt && connection.expiresAt <= Date.now()) connection.key = '';
-let imageLoadingId, blobUrl, connectionVersion = 0;
+let imageLoad, blobUrl, connectionVersion = 0, stateRevision = 0;
+let lastState;
 let discoveryUrl, discovering = false, signingIn = false;
 
 function normalizeBridge(value) {
@@ -53,7 +54,7 @@ async function discover() {
     const bridge = normalizeBridge(record.bridgeUrl);
     if (!/^[a-z0-9-]+\.trycloudflare\.com$/i.test(new URL(bridge).hostname)) throw new Error('画室地址无效，请检查电脑端启动窗口。');
     if (connection.bridge !== bridge) {
-      connection = { bridge, key: '' }; connectionVersion++; lastImageId = null;
+      connection = { bridge, key: '' }; connectionVersion++; resetImage();
       rememberConnection();
     }
     $('discovery-status').textContent = '已找到画室，输入密码即可连接。';
@@ -72,45 +73,86 @@ async function api(route, options = {}) {
   return data;
 }
 
+function cancelImageLoad() {
+  imageLoad?.controller.abort();
+  imageLoad = null;
+}
+function resetImage() {
+  cancelImageLoad();
+  lastImageId = null;
+  $('result').hidden = true;
+  view.disabled = true;
+  $('viewer').close();
+}
 async function loadImage(image) {
-  if (imageLoadingId === image.id) return;
-  imageLoadingId = image.id;
+  if (imageLoad?.id === image.id && imageLoad.version === connectionVersion) return;
+  cancelImageLoad();
   const version = connectionVersion;
+  const request = { id: image.id, version, controller: new AbortController() };
+  imageLoad = request;
+  let next;
+  const isCurrent = () => imageLoad === request && version === connectionVersion && latest?.id === image.id && !active && !submitting && !lastState?.submitting;
   try {
-    const response = await fetch(apiUrl(image.imageUrl), { headers: { Authorization: `Bearer ${connection.key}` }, signal: AbortSignal.timeout(60000), referrerPolicy: 'no-referrer' });
+    const response = await fetch(apiUrl(image.imageUrl), { headers: { Authorization: `Bearer ${connection.key}` }, signal: AbortSignal.any([request.controller.signal, AbortSignal.timeout(60000)]), referrerPolicy: 'no-referrer' });
     if (!response.ok) throw new Error('图片读取失败，请检查连接后重试。');
     const blob = await response.blob();
-    if (version !== connectionVersion) return;
-    const next = URL.createObjectURL(blob);
+    if (!isCurrent()) return;
+    next = URL.createObjectURL(blob);
+    // Decode offscreen before swapping: polling must not expose the old image.
+    const decoded = new Image();
+    decoded.src = next;
+    await decoded.decode();
+    if (!isCurrent()) return;
     const element = $('result');
-    element.onload = () => { $('placeholder').hidden = true; element.hidden = false; $('art-caption').textContent = '这一次，与你相遇的画面'; lastImageId = image.id; };
     element.src = next;
     $('full-image').src = next;
     if (blobUrl) URL.revokeObjectURL(blobUrl);
     blobUrl = next;
-  } catch (error) { clientError = error.message; $('error').hidden = false; $('error').textContent = clientError; }
-  finally { if (version === connectionVersion) imageLoadingId = null; }
+    next = null;
+    lastImageId = image.id;
+    clientError = '';
+    render(lastState);
+  } catch (error) {
+    if (isCurrent()) {
+      clientError = error.message || '图片加载失败，请稍后重试。';
+      $('error').hidden = false; $('error').textContent = clientError;
+      $('status-text').textContent = '图片还未加载成功，正在等待重试。';
+    }
+  } finally {
+    if (next) URL.revokeObjectURL(next);
+    if (imageLoad === request) imageLoad = null;
+  }
 }
 
 function render(state) {
+  lastState = state;
   active = state.active;
   latest = state.latest;
   const busy = Boolean(active || submitting || state.submitting);
+  const loading = !busy && Boolean(latest && latest.id !== lastImageId);
+  const waiting = busy || loading;
+  const imageReady = !waiting && Boolean(latest && latest.id === lastImageId);
+  if (busy || !latest) cancelImageLoad();
   $('connection').classList.toggle('online', state.connected);
   $('connection-text').textContent = state.connected ? '画室已连接' : '等待 ComfyUI';
-  generate.disabled = busy || !state.connected;
-  $('generate-label').textContent = busy ? '正在生成，请稍候' : '生成一张图片';
-  view.disabled = !latest;
-  $('progress-track').hidden = !busy;
-  $('progress-track').classList.toggle('indeterminate', busy && !active?.progress);
+  generate.disabled = waiting || !state.connected;
+  $('generate-label').textContent = loading ? '正在加载新图片' : busy ? '正在生成，请稍候' : '生成一张图片';
+  view.disabled = !imageReady;
+  $('result').hidden = !imageReady;
+  $('placeholder').hidden = imageReady;
+  $('art-caption').textContent = loading ? '新的画面，正在向你走来' : busy ? '等待这一场新的相遇' : imageReady ? '这一次，与你相遇的画面' : '等待一场灵感的初雪';
+  $('progress-track').hidden = !waiting;
+  $('progress-track').classList.toggle('indeterminate', loading || (busy && !active?.progress));
   $('progress-bar').style.width = `${active?.progress || 0}%`;
-  $('drawing-overlay').hidden = !busy;
-  $('status-symbol').textContent = busy ? '❄' : '✦';
-  $('status-text').textContent = active ? `${active.stage}${active.progress ? ` · ${active.progress}%` : ''}` : submitting ? '正在抽取一个新故事' : !state.connected ? '打开 ComfyUI 后，就可以开始画画了' : latest ? `画好了，用了 ${latest.seconds} 秒。点击查看完整图片。` : '准备好了，下一张会是什么呢？';
+  $('drawing-overlay').hidden = !waiting;
+  $('drawing-label').textContent = loading ? '正在加载新图片，请稍候' : '正在让想象变成画面';
+  $('elapsed').hidden = loading;
+  $('status-symbol').textContent = waiting ? '❄' : '✦';
+  $('status-text').textContent = active ? `${active.stage}${active.progress ? ` · ${active.progress}%` : ''}` : submitting || state.submitting ? '正在抽取一个新故事' : loading ? '绘制完成，正在加载新图片…' : !state.connected ? '打开 ComfyUI 后，就可以开始画画了' : imageReady ? `画好了，用了 ${latest.seconds} 秒。点击查看完整图片。` : '准备好了，下一张会是什么呢？';
   const error = state.error || clientError;
   $('error').hidden = !error;
   $('error').textContent = error || '';
-  if (latest && latest.id !== lastImageId) {
+  if (loading) {
     loadImage(latest);
   }
 }
@@ -124,8 +166,13 @@ async function refresh() {
     return;
   }
   stateLoading = true;
-  try { render(await api('/api/state')); }
+  const version = connectionVersion, revision = stateRevision;
+  try {
+    const state = await api('/api/state');
+    if (version === connectionVersion && revision === stateRevision) render(state);
+  }
   catch (error) {
+    if (version !== connectionVersion || revision !== stateRevision) return;
     $('connection').classList.remove('online');
     $('connection-text').textContent = error.status === 401 ? '重新连接画室' : '画室暂时离线';
     generate.disabled = true;
@@ -135,15 +182,20 @@ async function refresh() {
 }
 
 generate.addEventListener('click', async () => {
-  if (submitting || active) return;
+  if (generate.disabled || submitting || active) return;
+  stateRevision++;
   submitting = true;
   clientError = '';
   render({ active, latest, connected: true });
-  try { await api('/api/generate', { method: 'POST' }); }
+  try {
+    const job = await api('/api/generate', { method: 'POST' });
+    stateRevision++;
+    render({ active: job, latest, connected: true });
+  }
   catch (error) { clientError = error.message; }
   finally { submitting = false; await refresh(); }
 });
-view.addEventListener('click', () => { if (latest) $('viewer').showModal(); });
+view.addEventListener('click', () => { if (!view.disabled && latest?.id === lastImageId) $('viewer').showModal(); });
 $('close-viewer').addEventListener('click', () => $('viewer').close());
 $('viewer').addEventListener('click', event => { if (event.target === $('viewer')) $('viewer').close(); });
 setInterval(() => {
@@ -185,7 +237,7 @@ $('connect-form').addEventListener('submit', async event => {
     rememberConnection();
     const state = await api('/api/state');
     connectionVersion++;
-    rememberConnection(); clientError = ''; lastImageId = null;
+    rememberConnection(); clientError = ''; resetImage();
     $('connect-dialog').close(); render(state);
   } catch (error) {
     $('connect-error').textContent = error.message || '连接失败，请确认电脑端画室正在运行。';
