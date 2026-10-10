@@ -17,6 +17,8 @@ connection ||= { bridge: localPage ? location.origin : '', key: '' };
 if (connection.expiresAt && connection.expiresAt <= Date.now()) connection.key = '';
 let imageLoad, blobUrl, connectionVersion = 0, stateRevision = 0;
 let lastState;
+let selectedCharacter;
+const characterButtons = [];
 let discoveryUrl, discovering = false, signingIn = false;
 
 function normalizeBridge(value) {
@@ -29,6 +31,41 @@ try { if (connection.bridge) connection.bridge = normalizeBridge(connection.brid
 catch { connection = { bridge: localPage ? location.origin : '', key: '' }; }
 function rememberConnection() { try { sessionStorage.setItem(storageKey, JSON.stringify(connection)); } catch {} }
 rememberConnection();
+
+async function initializeCharacters() {
+  try {
+    const response = await fetch('./characters.json', { cache: 'no-store' });
+    if (!response.ok) throw new Error('角色列表读取失败，请刷新网页。');
+    const characters = await response.json();
+    if (!Array.isArray(characters) || !characters.length || characters.some(item => typeof item.id !== 'string' || typeof item.name !== 'string')) throw new Error('角色列表无效，请刷新网页。');
+    let previous;
+    try { previous = sessionStorage.getItem(storageKey + ':character'); } catch {}
+    selectedCharacter = characters.find(item => item.id === previous) || characters[0];
+    for (const character of characters) {
+      const button = document.createElement('button');
+      button.type = 'button'; button.className = 'character-button';
+      button.textContent = character.name;
+      button.addEventListener('click', () => {
+        if (button.disabled) return;
+        selectedCharacter = character;
+        try { sessionStorage.setItem(storageKey + ':character', character.id); } catch {}
+        updateCharacters();
+      });
+      characterButtons.push({ button, character });
+      $('character-options').append(button);
+    }
+    updateCharacters();
+  } catch (error) { clientError = error.message; $('character-hint').textContent = error.message; }
+}
+function updateCharacters(waiting = false) {
+  for (const { button, character } of characterButtons) {
+    const selected = character.id === selectedCharacter?.id;
+    button.setAttribute('aria-pressed', String(selected));
+    button.classList.toggle('selected', selected);
+    button.disabled = waiting;
+  }
+  if (selectedCharacter) $('character-hint').textContent = `已选择 ${selectedCharacter.name} · 角色固定`;
+}
 
 function openLogin() {
   $('studio-password').value = '';
@@ -135,7 +172,8 @@ function render(state) {
   if (busy || !latest) cancelImageLoad();
   $('connection').classList.toggle('online', state.connected);
   $('connection-text').textContent = state.connected ? '画室已连接' : '等待 ComfyUI';
-  generate.disabled = waiting || !state.connected;
+  generate.disabled = waiting || !state.connected || !selectedCharacter;
+  updateCharacters(waiting);
   $('generate-label').textContent = loading ? '正在加载新图片' : busy ? '正在生成，请稍候' : '生成一张图片';
   view.disabled = !imageReady;
   $('result').hidden = !imageReady;
@@ -188,7 +226,7 @@ generate.addEventListener('click', async () => {
   clientError = '';
   render({ active, latest, connected: true });
   try {
-    const job = await api('/api/generate', { method: 'POST' });
+    const job = await api('/api/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ characterId: selectedCharacter.id }) });
     stateRevision++;
     render({ active: job, latest, connected: true });
   }
@@ -204,6 +242,7 @@ setInterval(() => {
 }, 1000);
 setInterval(refresh, 1300);
 async function initialize() {
+  await initializeCharacters();
   try { await discover(); } catch {}
   if (localPage && !connection.key) {
     try {

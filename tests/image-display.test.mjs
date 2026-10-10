@@ -21,6 +21,7 @@ async function browser() {
     if (!elements.has(id)) elements.set(id, {
       hidden: true, disabled: false, textContent: '', style: {}, listeners: {},
       classList: { toggle() {}, remove() {} },
+      append() {}, setAttribute() {},
       addEventListener(type, handler) { this.listeners[type] = handler; },
       showModal() { this.open = true; }, close() { this.open = false; },
       getContext() { return { setTransform() {} }; }
@@ -35,10 +36,11 @@ async function browser() {
     URL: BrowserURL, AbortSignal, AbortController, console,
     location: { hostname: 'localhost', origin: 'http://localhost:3210', pathname: '/', hash: '' },
     sessionStorage: { getItem: () => JSON.stringify({ bridge: 'http://localhost:3210', key: 'test-session' }), setItem() {} },
-    document: { getElementById: element, hidden: false, addEventListener() {} },
+    document: { getElementById: element, createElement: () => element('button-' + elements.size), hidden: false, addEventListener() {} },
     Image: class { decode() { const pending = deferred(); decodes.push(pending); return pending.promise; } },
     fetch: async url => {
       const path = new URL(url, 'http://localhost:3210').pathname;
+      if (path === '/characters.json') return { ok: true, json: async () => [{ id: 'test-character', name: '测试角色' }] };
       if (path.startsWith('/api/images/')) {
         const pending = deferred(); downloads.push({ ...pending, url }); return pending.promise;
       }

@@ -3,7 +3,8 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { randomUUID, randomBytes } from 'node:crypto';
-import { prepareWorkflow, historyError, historyImages } from './workflow.mjs';
+import { prepareWorkflow, characterRandomMetadata, historyError, historyImages } from './workflow.mjs';
+import { parseCharacters } from './characters.mjs';
 import { checkRequest } from './security.mjs';
 import { verifyPassword, LoginGuard, Sessions } from './auth.mjs';
 
@@ -11,7 +12,7 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 const config = JSON.parse(await readFile(path.join(root, 'config.json'), 'utf8'));
 const port = Number(process.env.PORT || config.port || 3210);
 const comfyUrl = new URL(process.env.COMFY_URL || config.comfyUrl);
-const localDir = path.join(root, '.local');
+const localDir = path.resolve(root, process.env.YUKI_LOCAL_DIR || '.local');
 await mkdir(path.join(localDir, 'images'), { recursive: true });
 let credentials;
 try { credentials = JSON.parse(await readFile(path.join(localDir, 'credentials.json'), 'utf8')); } catch {}
@@ -57,9 +58,9 @@ async function comfy(route, options = {}, timeout = 15000) {
   return response;
 }
 
-async function loadWorkflow() {
+async function loadWorkflow(character) {
   const original = JSON.parse(await readFile(path.resolve(root, config.workflow), 'utf8'));
-  const workflow = prepareWorkflow(original);
+  const workflow = prepareWorkflow(original, true, character);
   const info = await (await comfy('/object_info')).json();
   const missing = [...new Set(Object.values(workflow).map(n => n.class_type))].filter(type => !info[type]);
   if (missing.length) throw new Error(`ComfyUI 缺少节点：${missing.join('、')}。请安装后重启 ComfyUI。`);
@@ -157,6 +158,7 @@ const staticFiles = new Map([
   ['/style.css', ['style.css', 'text/css; charset=utf-8']],
   ['/app.js', ['app.js', 'text/javascript; charset=utf-8']],
   ['/site-config.json', ['site-config.json', 'application/json; charset=utf-8']],
+  ['/characters.json', ['characters.json', 'application/json; charset=utf-8']],
   ['/winter.svg', ['winter.svg', 'image/svg+xml']]
 ]);
 
@@ -196,17 +198,29 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'POST' && url.pathname === '/api/generate') {
       if (state.active || submitting) return json(res, 409, { error: '已有图片正在生成，请等待完成。' });
+      let body = '';
+      for await (const chunk of req) {
+        if (Buffer.byteLength(body) + chunk.length > 1024) return json(res, 413, { error: '生成请求过大。' });
+        body += chunk;
+      }
+      let data;
+      try { data = JSON.parse(body); } catch { return json(res, 400, { error: '请刷新网页并选择角色后再生成。' }); }
+      const characters = parseCharacters(await readFile(path.join(root, '角色.txt'), 'utf8'));
+      const character = characters.find(item => item.id === data?.characterId);
+      if (!character) return json(res, 400, { error: '请选择角色列表中的一个角色。' });
+      // Another request may have acquired the slot while this body was being read.
+      if (state.active || submitting) return json(res, 409, { error: '已有图片正在生成，请等待完成。' });
       submitting = true;
       try {
-        const workflow = await loadWorkflow();
+        const workflow = await loadWorkflow(character);
         const response = await comfy('/prompt', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: workflow, client_id: clientId })
+          body: JSON.stringify({ prompt: workflow, client_id: clientId, extra_data: characterRandomMetadata(workflow) })
         });
         const result = await response.json();
         if (!result.prompt_id) throw new Error('ComfyUI 没有返回任务编号。');
         const sampler = Object.values(workflow).find(n => n.class_type === 'KSampler');
-        state.active = { id: randomUUID(), promptId: result.prompt_id, startedAt: Date.now(), progress: 0, stage: '已加入队列，等待画笔', seed: sampler?.inputs.seed };
+        state.active = { id: randomUUID(), promptId: result.prompt_id, startedAt: Date.now(), progress: 0, stage: '已加入队列，等待画笔', seed: sampler?.inputs.seed, characterId: character.id, characterName: character.name };
         state.error = null;
         connected = true;
         await save();

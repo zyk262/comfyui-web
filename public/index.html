@@ -25,7 +25,8 @@
         <p class="intro-copy">不必想好故事的开头。<br>轻点一下，遇见一幅意想不到的画。</p>
         <div class="control-card glass">
           <div class="card-top"><span class="mini-spark">✧</span><span>今日份的小小惊喜</span><span class="tiny-label">RANDOM DRAW</span></div>
-          <button id="generate" class="button button-primary" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 19 11-11m-3-3 6 6M6 3v4M4 5h4m11 10v4m-2-2h4M14 2l1 3 3 1-3 1-1 3-1-3-3-1 3-1Z"/></svg><span id="generate-label">生成一张图片</span><span class="button-arrow">↗</span></button>
+          <fieldset class="character-picker"><legend>今天，想与谁相遇？ <span>CHOOSE A CHARACTER</span></legend><div id="character-options" class="character-options"></div><p id="character-hint" class="character-hint" aria-live="polite">正在载入角色…</p><small>画师 · 服装 · 姿势 · 背景，每次随机</small></fieldset>
+          <button id="generate" class="button button-primary" type="button" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 19 11-11m-3-3 6 6M6 3v4M4 5h4m11 10v4m-2-2h4M14 2l1 3 3 1-3 1-1 3-1-3-3-1 3-1Z"/></svg><span id="generate-label">生成一张图片</span><span class="button-arrow">↗</span></button>
           <button id="view" class="button button-secondary" type="button" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8" cy="8" r="1.5"/><path d="m4 17 5-5 4 4 3-3 4 4"/></svg><span>查看图片</span><span class="button-arrow">↗</span></button>
           <div class="task-status" aria-live="polite"><span id="status-symbol" class="status-symbol">✦</span><span id="status-text">准备好了，下一张会是什么呢？</span></div>
           <div id="progress-track" class="progress-track" hidden><div id="progress-bar" class="progress-bar"></div></div>
