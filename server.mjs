@@ -1,0 +1,235 @@
+import http from 'node:http';
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+import { randomUUID, randomBytes } from 'node:crypto';
+import { prepareWorkflow, historyError, historyImages } from './workflow.mjs';
+import { checkRequest } from './security.mjs';
+
+const root = path.dirname(fileURLToPath(import.meta.url));
+const config = JSON.parse(await readFile(path.join(root, 'config.json'), 'utf8'));
+const port = Number(process.env.PORT || config.port || 3210);
+const comfyUrl = new URL(process.env.COMFY_URL || config.comfyUrl);
+const localDir = path.join(root, '.local');
+await mkdir(path.join(localDir, 'images'), { recursive: true });
+let credentials;
+try { credentials = JSON.parse(await readFile(path.join(localDir, 'credentials.json'), 'utf8')); } catch {}
+if (!credentials?.accessKey) {
+  credentials = { accessKey: randomBytes(32).toString('hex') };
+  await writeFile(path.join(localDir, 'credentials.json'), JSON.stringify(credentials));
+}
+const token = credentials.accessKey;
+let state = { active: null, latest: null, error: null };
+try { state = JSON.parse(await readFile(path.join(localDir, 'state.json'), 'utf8')); } catch {}
+let connected = false;
+let submitting = false;
+let checking = false;
+let socket;
+let socketReconnect;
+const clientId = randomUUID();
+const statePath = path.join(localDir, 'state.json');
+const save = () => writeFile(statePath, JSON.stringify(state, null, 2), 'utf8');
+const json = (res, code, value) => {
+  res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+  res.end(JSON.stringify(value));
+};
+
+async function comfy(route, options = {}, timeout = 15000) {
+  let response;
+  try {
+    response = await fetch(new URL(route, comfyUrl), { ...options, signal: AbortSignal.timeout(timeout) });
+  } catch { throw new Error('无法连接 ComfyUI，请保持 Desktop 运行，并检查 config.json 中的地址。'); }
+  if (!response.ok) {
+    const body = await response.text();
+    let message = body;
+    try {
+      const error = JSON.parse(body);
+      const details = Object.values(error.node_errors || {}).flatMap(node => (node.errors || []).map(e => e.message + (e.details ? `：${e.details}` : '')));
+      message = details.join('；') || error.error?.message || body;
+    } catch {}
+    throw new Error(message.slice(0, 1400) || `ComfyUI 返回 ${response.status}`);
+  }
+  return response;
+}
+
+async function loadWorkflow() {
+  const original = JSON.parse(await readFile(path.resolve(root, config.workflow), 'utf8'));
+  const workflow = prepareWorkflow(original);
+  const info = await (await comfy('/object_info')).json();
+  const missing = [...new Set(Object.values(workflow).map(n => n.class_type))].filter(type => !info[type]);
+  if (missing.length) throw new Error(`ComfyUI 缺少节点：${missing.join('、')}。请安装后重启 ComfyUI。`);
+  await writeFile(path.join(localDir, 'last-submitted-workflow.json'), JSON.stringify(workflow, null, 2));
+  return workflow;
+}
+
+function listenProgress() {
+  if (socket && [WebSocket.OPEN, WebSocket.CONNECTING].includes(socket.readyState)) return;
+  const url = new URL('/ws', comfyUrl);
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  url.searchParams.set('clientId', clientId);
+  socket = new WebSocket(url);
+  socket.addEventListener('message', event => {
+    if (typeof event.data !== 'string') return;
+    try {
+      const { type, data } = JSON.parse(event.data);
+      const active = state.active;
+      if (!active || data?.prompt_id !== active.promptId) return;
+      if (type === 'execution_start') active.stage = '正在准备画笔';
+      if (type === 'progress') {
+        active.stage = '正在绘制你的画面';
+        active.progress = Math.round((data.value / data.max) * 100);
+      }
+      if (type === 'executing' && data.node) {
+        active.stage = data.node === '18' ? '正在保存图片' : active.stage;
+      }
+      if (type === 'execution_error' || type === 'execution_interrupted') {
+        state.error = data.exception_message || '任务已在 ComfyUI 中被中断。';
+        state.active = null;
+        save().catch(console.error);
+      }
+      if (type === 'executed' || (type === 'executing' && data.node === null)) refreshJob();
+    } catch {}
+  });
+  socket.addEventListener('error', () => {});
+  socket.addEventListener('close', () => {
+    clearTimeout(socketReconnect);
+    socketReconnect = setTimeout(listenProgress, 4000);
+  });
+}
+
+async function refreshJob() {
+  if (!state.active || checking) return;
+  checking = true;
+  const job = state.active;
+  try {
+    const history = await (await comfy(`/history/${encodeURIComponent(job.promptId)}`)).json();
+    connected = true;
+    const entry = history[job.promptId];
+    if (!entry) {
+      const queue = await (await comfy('/queue')).json();
+      const running = (queue.queue_running || []).some(row => row[1] === job.promptId);
+      const waiting = (queue.queue_pending || []).some(row => row[1] === job.promptId);
+      if (running) job.stage = job.progress ? '正在绘制你的画面' : '正在准备画笔';
+      else if (waiting) job.stage = '已加入队列，等待画笔';
+      else if (Date.now() - job.startedAt > 10000) {
+        state.error = '任务已离开 ComfyUI 队列，可能被移除或服务已重启。可以重新生成。';
+        state.active = null;
+        await save();
+      }
+      return;
+    }
+    const error = historyError(entry);
+    if (error) throw new Error(error);
+    if (!entry.status?.completed) return;
+    const images = historyImages(entry);
+    if (!images.length) throw new Error('任务结束但没有输出图片，请确认工作流包含“保存图像”节点。');
+    const image = images[0];
+    const query = new URLSearchParams({ filename: image.filename, subfolder: image.subfolder || '', type: 'output' });
+    const response = await comfy(`/view?${query}`, {}, 60000);
+    const bytes = Buffer.from(await response.arrayBuffer());
+    const contentType = response.headers.get('content-type') || 'image/png';
+    if (!contentType.startsWith('image/')) throw new Error('ComfyUI 返回的内容不是图片。');
+    await writeFile(path.join(localDir, 'images', `${job.id}.image`), bytes);
+    state.latest = { id: job.id, completedAt: Date.now(), seconds: Math.round((Date.now() - job.startedAt) / 1000), seed: job.seed, contentType, imageUrl: `/api/images/${job.id}` };
+    state.active = null;
+    state.error = null;
+    await save();
+    console.log(`生成完成：${job.promptId}，${state.latest.seconds} 秒`);
+  } catch (error) {
+    if (error.message.startsWith('无法连接')) connected = false;
+    else {
+      state.error = error.message;
+      state.active = null;
+      await save();
+      console.error(error.message);
+    }
+  } finally { checking = false; }
+}
+
+const staticFiles = new Map([
+  ['/', ['index.html', 'text/html; charset=utf-8']],
+  ['/index.html', ['index.html', 'text/html; charset=utf-8']],
+  ['/style.css', ['style.css', 'text/css; charset=utf-8']],
+  ['/app.js', ['app.js', 'text/javascript; charset=utf-8']],
+  ['/winter.svg', ['winter.svg', 'image/svg+xml']]
+]);
+
+const server = http.createServer(async (req, res) => {
+  const access = checkRequest(req, { port, token, allowedOrigins: config.allowedOrigins });
+  for (const [header, value] of Object.entries(access.cors || {})) res.setHeader(header, value);
+  if (access.code === 204) { res.writeHead(204); return res.end(); }
+  if (access.code !== 200) return json(res, access.code, { error: access.error });
+  const url = new URL(req.url, `http://127.0.0.1:${port}`);
+  try {
+    if (req.method === 'GET' && url.pathname === '/health') return json(res, 200, { service: 'yuki-anima', ready: true });
+    if (req.method === 'GET' && url.pathname === '/api/session' && access.localSession) return json(res, 200, { accessKey: token });
+    if (req.method === 'GET' && url.pathname === '/api/state') {
+      return json(res, 200, { ...state, connected, submitting });
+    }
+    if (req.method === 'POST' && url.pathname === '/api/generate') {
+      if (state.active || submitting) return json(res, 409, { error: '已有图片正在生成，请等待完成。' });
+      submitting = true;
+      try {
+        const workflow = await loadWorkflow();
+        const response = await comfy('/prompt', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: workflow, client_id: clientId })
+        });
+        const result = await response.json();
+        if (!result.prompt_id) throw new Error('ComfyUI 没有返回任务编号。');
+        const sampler = Object.values(workflow).find(n => n.class_type === 'KSampler');
+        state.active = { id: randomUUID(), promptId: result.prompt_id, startedAt: Date.now(), progress: 0, stage: '已加入队列，等待画笔', seed: sampler?.inputs.seed };
+        state.error = null;
+        connected = true;
+        await save();
+        console.log(`已提交生成任务：${result.prompt_id}`);
+        return json(res, 202, state.active);
+      } finally { submitting = false; }
+    }
+    if (req.method === 'GET' && url.pathname.startsWith('/api/images/')) {
+      const id = url.pathname.slice('/api/images/'.length);
+      if (!state.latest || id !== state.latest.id) return json(res, 404, { error: '图片不存在，请生成一张新图片。' });
+      const bytes = await readFile(path.join(localDir, 'images', `${id}.image`));
+      res.writeHead(200, { 'Content-Type': state.latest.contentType, 'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff' });
+      return res.end(bytes);
+    }
+    if (req.method === 'GET' && staticFiles.has(url.pathname)) {
+      const [file, contentType] = staticFiles.get(url.pathname);
+      const bytes = await readFile(path.join(root, 'public', file));
+      res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' });
+      return res.end(bytes);
+    }
+    return json(res, 404, { error: '没有找到这个地址。' });
+  } catch (error) {
+    console.error(error.message);
+    return json(res, 502, { error: error.message });
+  }
+});
+
+let healthChecking = false;
+async function checkHealth() {
+  if (healthChecking) return;
+  healthChecking = true;
+  try { await comfy('/system_stats', {}, 3000); connected = true; } catch { connected = false; }
+  finally { healthChecking = false; }
+}
+await checkHealth();
+listenProgress();
+const healthTimer = setInterval(checkHealth, 5000);
+const jobTimer = setInterval(refreshJob, 1200);
+server.on('error', error => {
+  console.error(error.code === 'EADDRINUSE' ? `端口 ${port} 已被占用。已有网页服务时直接打开 http://127.0.0.1:${port}；否则在 config.json 中修改 port。` : error);
+  process.exit(1);
+});
+server.listen(port, '127.0.0.1', () => {
+  writeFile(path.join(localDir, 'bridge.pid'), String(process.pid)).catch(console.error);
+  console.log(`\nYUKI / ANIMA 本地画室\n网页：http://127.0.0.1:${port}\nComfyUI：${comfyUrl.origin}\n按 Ctrl+C 停止网页服务。\n`);
+});
+function stop() {
+  clearInterval(healthTimer); clearInterval(jobTimer); clearTimeout(socketReconnect);
+  if (socket) socket.close();
+  server.close();
+  setTimeout(() => process.exit(0), 200).unref();
+}
+process.on('SIGINT', stop);
+process.on('SIGTERM', stop);
