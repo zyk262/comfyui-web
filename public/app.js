@@ -8,16 +8,15 @@ let stateLoading = false;
 let lastImageId;
 let clientError = '';
 const localPage = ['127.0.0.1', 'localhost', '[::1]'].includes(location.hostname);
-const storageKey = 'yuki-connection:' + location.pathname;
+const storageKey = 'yuki-login-v2:' + location.pathname;
 let connection;
 try { connection = JSON.parse(sessionStorage.getItem(storageKey)); } catch {}
-const fragment = new URLSearchParams(location.hash.slice(1));
-if (fragment.has('bridge') && fragment.has('key')) {
-  connection = { bridge: fragment.get('bridge'), key: fragment.get('key') };
-  history.replaceState(null, '', location.pathname + location.search);
-}
+// Retire old private links and avoid retaining secrets in browser history.
+if (location.hash) history.replaceState(null, '', location.pathname + location.search);
 connection ||= { bridge: localPage ? location.origin : '', key: '' };
+if (connection.expiresAt && connection.expiresAt <= Date.now()) connection.key = '';
 let imageLoadingId, blobUrl, connectionVersion = 0;
+let discoveryUrl, discovering = false, signingIn = false;
 
 function normalizeBridge(value) {
   const url = new URL(value);
@@ -29,6 +28,40 @@ try { if (connection.bridge) connection.bridge = normalizeBridge(connection.brid
 catch { connection = { bridge: localPage ? location.origin : '', key: '' }; }
 function rememberConnection() { try { sessionStorage.setItem(storageKey, JSON.stringify(connection)); } catch {} }
 rememberConnection();
+
+function openLogin() {
+  $('studio-password').value = '';
+  $('connect-error').hidden = true;
+  if (!$('connect-dialog').open) $('connect-dialog').showModal();
+}
+async function discover() {
+  if (localPage) { connection.bridge = location.origin; return; }
+  if (discovering) return;
+  discovering = true;
+  try {
+    if (!discoveryUrl) {
+      const response = await fetch('./site-config.json', { cache: 'no-store' });
+      if (!response.ok) throw new Error('网页配置读取失败，请刷新。');
+      discoveryUrl = (await response.json()).discoveryUrl;
+    }
+    const url = new URL(discoveryUrl);
+    url.searchParams.set('t', String(Date.now()));
+    const response = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(15000), referrerPolicy: 'no-referrer' });
+    if (!response.ok) throw new Error('请先在电脑上双击 start-remote.cmd。');
+    const record = await response.json();
+    if (record.version !== 1 || !record.online || Date.parse(record.expiresAt) <= Date.now()) throw new Error('画室暂时离线，请在电脑上启动远程画室。');
+    const bridge = normalizeBridge(record.bridgeUrl);
+    if (!/^[a-z0-9-]+\.trycloudflare\.com$/i.test(new URL(bridge).hostname)) throw new Error('画室地址无效，请检查电脑端启动窗口。');
+    if (connection.bridge !== bridge) {
+      connection = { bridge, key: '' }; connectionVersion++; lastImageId = null;
+      rememberConnection();
+    }
+    $('discovery-status').textContent = '已找到画室，输入密码即可连接。';
+  } catch (error) {
+    $('discovery-status').textContent = error.message || '暂时找不到画室，请稍后重试。';
+    throw error;
+  } finally { discovering = false; }
+}
 
 function apiUrl(route) { return new URL(route, connection.bridge).href; }
 
@@ -86,8 +119,8 @@ async function refresh() {
   if (stateLoading) return;
   if (!connection.bridge || !connection.key) {
     generate.disabled = true;
-    $('connection-text').textContent = '连接你的画室';
-    $('status-text').textContent = '点击右上角连接，或使用电脑生成的私人链接。';
+    $('connection-text').textContent = '输入密码';
+    $('status-text').textContent = '点击右上角，输入密码进入画室。';
     return;
   }
   stateLoading = true;
@@ -96,7 +129,8 @@ async function refresh() {
     $('connection').classList.remove('online');
     $('connection-text').textContent = error.status === 401 ? '重新连接画室' : '画室暂时离线';
     generate.disabled = true;
-    $('status-text').textContent = error.status === 401 ? '访问口令不正确，点击右上角更新连接。' : '请保持电脑端画室运行；重启后使用新的私人链接。';
+    $('status-text').textContent = error.status === 401 ? '登录已过期，请重新输入画室密码。' : '请保持电脑端画室运行，网页会自动寻找新的连接。';
+    if (error.status === 401) { connection.key = ''; rememberConnection(); openLogin(); }
   } finally { stateLoading = false; }
 }
 
@@ -118,6 +152,7 @@ setInterval(() => {
 }, 1000);
 setInterval(refresh, 1300);
 async function initialize() {
+  try { await discover(); } catch {}
   if (localPage && !connection.key) {
     try {
       const response = await fetch('/api/session', { headers: { 'X-Yuki-Request': '1' }, cache: 'no-store' });
@@ -126,31 +161,41 @@ async function initialize() {
     } catch {}
   }
   await refresh();
+  if (!connection.key) openLogin();
 }
 $('connection').addEventListener('click', () => {
-  $('bridge-url').value = connection.bridge;
-  $('access-key').value = connection.key;
-  $('connect-error').hidden = true;
-  $('connect-dialog').showModal();
+  openLogin();
+  discover().catch(() => {});
 });
 $('close-connect').addEventListener('click', () => $('connect-dialog').close());
 $('connect-dialog').addEventListener('click', event => { if (event.target === $('connect-dialog')) $('connect-dialog').close(); });
 $('connect-form').addEventListener('submit', async event => {
   event.preventDefault();
-  const previous = connection;
+  if (signingIn) return;
+  signingIn = true;
+  $('login-button').disabled = true;
+  $('connect-error').hidden = true;
   try {
-    connection = { bridge: normalizeBridge($('bridge-url').value.trim()), key: $('access-key').value.trim() };
-    if (!connection.key) throw new Error('请填写访问口令。');
+    await discover();
+    if (!connection.bridge) throw new Error('请先在电脑上启动远程画室。');
+    const password = $('studio-password').value;
+    const session = await api('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password }) });
+    connection.key = session.accessKey;
+    connection.expiresAt = session.expiresAt;
+    rememberConnection();
     const state = await api('/api/state');
     connectionVersion++;
     rememberConnection(); clientError = ''; lastImageId = null;
     $('connect-dialog').close(); render(state);
   } catch (error) {
-    connection = previous;
-    $('connect-error').textContent = error.status ? error.message : '连接失败，请检查服务地址和电脑端画室是否在线。';
+    $('connect-error').textContent = error.message || '连接失败，请确认电脑端画室正在运行。';
     $('connect-error').hidden = false;
+  } finally {
+    $('studio-password').value = '';
+    signingIn = false; $('login-button').disabled = false;
   }
 });
+setInterval(() => { discover().then(refresh).catch(() => {}); }, 60000);
 initialize();
 
 // Soft snowfall: decorative only, capped for mobile, and respects reduced motion.

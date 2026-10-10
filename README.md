@@ -1,73 +1,66 @@
 # 雪间画室 · YUKI / ANIMA
 
-生成随机插画、预览、查看完整图片。浅色毛玻璃界面与动态飘雪，无提示词输入框，无外部字体 CDN 或付费模型 API。
+[固定网页](https://zyk262.github.io/comfyui-web/) · GitHub Pages 托管的浅色毛玻璃画室，动态飘雪，一键生成与完整图片预览。
 
-网页：<https://zyk262.github.io/comfyui-web/>。
-
-网页由 GitHub Pages 托管；生成仍由自己的电脑执行。电脑端通过 Cloudflare Quick Tunnel 提供 HTTPS 连接，所有生成与图片接口均需要本地生成的访问口令。
-
-## 手机 / 远程使用
+## 日常使用
 
 1. 打开 ComfyUI Desktop。
-2. 双击 `start-remote.cmd`，保持启动窗口运行。
-3. 等待电脑端连接页打开，点击“打开雪间画室”。
-4. 手机访问连接页中的私人链接，或复制 `.local/private-link.txt` 中的链接到手机浏览器。
+2. 双击 `start-remote.cmd`，等待窗口显示 Remote atelier is ready，保持窗口运行。
+3. 手机打开固定网页，输入自己的画室密码。无需填写服务地址，无需每次复制私人链接。
 
-私人链接会在进入网页后自动配置服务地址和口令，并从地址栏清除口令。口令只保存于当前标签页的 sessionStorage。也可点网页右上角“连接画室”手动填写地址和口令。
+程序自动建立 Cloudflare Quick Tunnel，并将新地址更新到仓库的 `runtime` 分支。网页自动查找最新地址。`main` 分支只负责网页和源代码发布，地址更新不会触发 Pages 重新部署。
 
-Quick Tunnel 是免费临时通道，无需购买域名或注册 Cloudflare 账号。每次重启隧道会产生新地址，此时需要使用新的私人链接；不需要重新上传网页。GitHub Pages 网页地址保持不变。Quick Tunnel 用于测试和个人试用，不保证持续在线；固定地址需要另行配置正式通道。
+电脑、ComfyUI 与启动窗口都需要保持运行。关闭服务后无法远程生成；再次启动仍使用同一个网页地址。Quick Tunnel 是免费临时通道，不保证持续在线，无需购买域名。
 
-关闭启动窗口会结束远程服务。也可以双击 `stop-remote.cmd` 停止此项目的远程服务；不会停止 ComfyUI Desktop。生成要求电脑开机、ComfyUI 与远程服务在线，工作流所用插件和模型已安装。
+## 一次性 GitHub 授权
 
-远程通道转发生成请求与返回图片，HTTPS 数据经 Cloudflare 中转。它仅连接本项目的桥接服务，不直接公开 ComfyUI 的完整接口。
+**仅首次需要。** GitHub 插件账户连接用于对话工具，不会给电脑上的独立启动程序提供可持久使用的写入凭据。
 
-## 免费发布
+双击 `setup-github.cmd`，程序会打开 GitHub 的 fine-grained token 创建页：
 
-公开仓库的 GitHub Pages 使用 GitHub Actions 发布。仓库 Settings → Pages → Source 设置为 GitHub Actions，推送到 main 后自动检查代码并发布 `public/`。
+1. Repository access 选择 Only select repositories，只选 `comfyui-web`。
+2. Repository permissions 只授予 Contents: Read and write；Metadata 的只读权限由 GitHub 自动添加。
+3. 设置有效期，点击 Generate token。
+4. 将令牌粘贴到电脑端配置窗口后按 Enter。输入不显示；不要将令牌发到聊天或提交到仓库。
 
-工作流和桥接源代码在仓库中；发布产物只有静态网页。访问口令、私人链接、生成图片、服务状态与 cloudflared 可执行文件都放在 `.local/`，不上传仓库。
+该令牌用于自动更新通道地址；权限能够修改此仓库文件，因此应只选这个仓库。令牌经 Windows DPAPI 加密保存在 `.local/github-token.dpapi`，绑定当前 Windows 用户。授权过期或撤销后重新运行配置工具。
 
-## 启动
+程序也可复用已有的 Git 凭据。如果尚未配置，首次双击 `start-remote.cmd` 会提示完成一次性配置。
 
-1. 打开 ComfyUI Desktop，保持服务运行。
-2. 双击此文件夹中的 `start.cmd`。需要 Node.js 22 或更高版本，无需 `npm install`。
-3. 浏览器打开 <http://127.0.0.1:3210>。
-4. 点击“生成一张图片”，生成完成后自动显示；点击“查看图片”查看完整图片。可按 Esc 或右上角 × 关闭预览。
+## 登录与安全
 
-也可以在此目录运行 `node launcher.mjs`。直接运行 `node server.mjs` 只启动桥接服务。关闭启动窗口或按 Ctrl+C 即可停止网页服务；已经提交的 ComfyUI 任务会继续生成。
+画室密码仅在本机 `.local/login.json` 保存随机盐和 scrypt 哈希，不包含在公开网页、仓库或发现地址文件中。网页不内置密码，也不使用前端比较密码的方式。
 
-## 配置
+密码通过 HTTPS 发送到自己的桥接服务校验。成功后获得有效期 8 小时的随机会话令牌，保存在当前标签页 sessionStorage。后续生成、进度和图片读取都使用令牌；服务重启后需要重新登录。
 
-`config.json` 指定 ComfyUI 地址、网页端口、原始工作流、Pages 地址与允许连接的网页来源。默认 ComfyUI 地址为 `http://127.0.0.1:8188`，网页端口为 `3210`。修改允许来源后需要重启桥接服务。
+同一来源 15 分钟内累计 5 次登录失败将暂停尝试；所有来源累计 30 次失败也会限制登录，以降低分布式猜密码风险。保护会造成短暂登录等待，不能完全防止拒绝服务。密码输入框提交后清空。
 
-原始 `anima turbo.json` 保持不变。服务每次提交时读取原文件、随机化采样种子。当前原文件的 `AnimaPromptPlusClipEncode` 提示词字段全空，因此服务会在副本中加入同一插件的 `AnimaPromptComposer`，并将其 STRING 输出接到 Plus 节点的 `extra_prompt`。随机抽取画师、角色、服装、背景和姿势，由现有插件在 ComfyUI 中完成，不在网页编造提示词。Composer 使用新的随机种子，避免重复使用缓存。
+**短数字密码仍然较弱。** 此项目适合个人使用；公开链接和通道地址不是秘密，知道密码的人能调用生成接口并查看最近图片。长期使用应改为更长的随机密码，不建议公开分享密码。
 
-如果以后在原工作流中连接好自己的随机节点或填入提示词，服务会保留它们，不自动插入 Composer。现有模型、8 步采样、CFG 1、920×1536 分辨率和负面提示词保持原设置。本项目没有加入 NAG。
+桥接服务只监听 `127.0.0.1`，远程通道只转发本项目的接口，不直接公开 ComfyUI 的完整接口。浏览器跨域来源只允许自己的 Pages 来源；来源限制不是身份验证的替代。
 
-## 文件
+`.local/` 不上传仓库：包括密码哈希、访问令牌、GitHub 加密凭据、生成图片、运行状态、日志、可执行文件。`runtime/connection.json` 只公开通道地址、在线标记与时间，无密码或令牌。启动后每 8 小时刷新记录，记录 24 小时后过期；异常退出时网页也会根据连接失败提示离线。
 
-- `public/`：静态网页、样式、飘雪动画和原创 SVG 冬日插画。
-- `server.mjs`：Node.js 本地桥接服务。提交任务、读取进度、轮询结果并复制图片到项目目录。
-- `workflow.mjs`：工作流适配与结果解析。
-- `security.mjs`：访问口令、来源检查与跨域预检处理。
-- `launcher.mjs`：启动本地服务 / HTTPS 隧道，创建私人连接页。
-- `.github/workflows/pages.yml`：自动检查和部署 GitHub Pages。
-- `.local/credentials.json`：访问口令，绝不可提交到公开仓库。
-- `.local/connect.html`、`.local/private-link.txt`：电脑和手机的私人访问入口。
-- `.local/last-submitted-workflow.json`：最近一次真正提交的 API 工作流，便于排查。
-- `.local/images/`：生成图片的本地副本，原图仍保存在 ComfyUI 的输出目录。
-- `.local/state.json`：当前任务和最近图片的信息。刷新页面可继续跟踪任务；重启网页服务后可查看最近图片。
+HTTPS 请求和返回图片经 Cloudflare 中转。工作流未调用付费生成 API。
 
-`.local/` 已排除 Git 跟踪。网页只显示最近一张图，本地副本会保留，需要时可以手动清理。
+## 本地使用与配置
 
-## 使用范围
+双击 `start.cmd` 在电脑打开本地网页。需要 Node.js 22 或更新版本，无需 npm install。当前电脑已设置画室密码；全新安装需要在本机配置 `.local/login.json` 后启动。
 
-桥接服务只监听 `127.0.0.1`。远程模式通过 cloudflared 转发，API、进度状态与图片都校验访问口令，并限定浏览器来源。本地网页可以在同源、无代理转发的情况下获得本机口令；远程请求无法访问此入口。
+`config.json` 包含 ComfyUI 地址、本地端口、工作流与 GitHub 发现配置。默认 ComfyUI 为 `http://127.0.0.1:8188`，桥接为 `http://127.0.0.1:3210`。
 
-当前只提供个人使用的一次一张图、最近图片预览，不包含多用户计费、图库或用户账户。保管好私人链接，它代表访问你的画室的权限。
+`proxyUrl` 默认 `http://127.0.0.1:7890`。电脑代理在线且 Node.js 支持动态代理时，GitHub 更新与 CLI 下载会通过它，localhost 请求直接连接。代理关闭时使用直连。当前电脑的 Node.js 支持该功能。
 
-## 检查
+原始 `anima turbo.json` 保持不变。提交副本随机化采样种子；提示词字段全空时，接入同一插件的 `AnimaPromptComposer` 自动随机组合，不在网页提供提示词输入。已有上游随机节点或提示词则保留。模型、8 步采样、CFG 1、采样器和 920×1536 分辨率保持原设置，未加入 NAG。
 
-运行 `node --check server.mjs`、`node --check launcher.mjs` 和 `node --check public/app.js` 检查 JavaScript 语法；运行 `node --test tests/*.test.mjs` 检查工作流适配、原文件保护、任务结果解析、口令校验和远程请求限制。启动与测试都不依赖 npm。
+随机工作流测试中曾返回噪点图，另一次随机生成及已知参数复测正常。网页按 ComfyUI 实际返回的结果显示，未添加伪造图片或静默替换采样参数。
 
-参考：[GitHub Pages](https://docs.github.com/en/pages/getting-started-with-github-pages/creating-a-github-pages-site)、[Cloudflare Quick Tunnels](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/)。
+`stop-remote.cmd` 停止本项目服务，不停止 ComfyUI。已经提交的 ComfyUI 任务仍可能继续执行。
+
+## 发布与检查
+
+Settings → Pages → Source 为 GitHub Actions。推送 main 后，检查代码并仅发布 `public/` 静态网页。
+
+运行 `node --check server.mjs`、`node --check launcher.mjs`、`node --check publisher.mjs`、`node --check public/app.js`，以及 `node --test tests/*.test.mjs`。
+
+参考：[GitHub Pages](https://docs.github.com/en/pages/getting-started-with-github-pages/creating-a-github-pages-site)、[GitHub 仓库文件接口](https://docs.github.com/en/rest/repos/contents)、[Fine-grained tokens](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens)、[Cloudflare Quick Tunnels](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/)。

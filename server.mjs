@@ -5,6 +5,7 @@ import path from 'node:path';
 import { randomUUID, randomBytes } from 'node:crypto';
 import { prepareWorkflow, historyError, historyImages } from './workflow.mjs';
 import { checkRequest } from './security.mjs';
+import { verifyPassword, LoginGuard, Sessions } from './auth.mjs';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const config = JSON.parse(await readFile(path.join(root, 'config.json'), 'utf8'));
@@ -19,6 +20,10 @@ if (!credentials?.accessKey) {
   await writeFile(path.join(localDir, 'credentials.json'), JSON.stringify(credentials));
 }
 const token = credentials.accessKey;
+let loginRecord;
+try { loginRecord = JSON.parse(await readFile(path.join(localDir, 'login.json'), 'utf8')); } catch {}
+const sessions = new Sessions();
+const loginGuard = new LoginGuard();
 let state = { active: null, latest: null, error: null };
 try { state = JSON.parse(await readFile(path.join(localDir, 'state.json'), 'utf8')); } catch {}
 let connected = false;
@@ -151,17 +156,40 @@ const staticFiles = new Map([
   ['/index.html', ['index.html', 'text/html; charset=utf-8']],
   ['/style.css', ['style.css', 'text/css; charset=utf-8']],
   ['/app.js', ['app.js', 'text/javascript; charset=utf-8']],
+  ['/site-config.json', ['site-config.json', 'application/json; charset=utf-8']],
   ['/winter.svg', ['winter.svg', 'image/svg+xml']]
 ]);
 
 const server = http.createServer(async (req, res) => {
-  const access = checkRequest(req, { port, token, allowedOrigins: config.allowedOrigins });
+  const access = checkRequest(req, { port, token, allowedOrigins: config.allowedOrigins,
+    validateToken: (key, localHost) => sessions.valid(key) || (localHost && key === token && !req.headers['cf-ray'] && !req.headers['x-forwarded-for']) });
   for (const [header, value] of Object.entries(access.cors || {})) res.setHeader(header, value);
   if (access.code === 204) { res.writeHead(204); return res.end(); }
   if (access.code !== 200) return json(res, access.code, { error: access.error });
   const url = new URL(req.url, `http://127.0.0.1:${port}`);
   try {
-    if (req.method === 'GET' && url.pathname === '/health') return json(res, 200, { service: 'yuki-anima', ready: true });
+    if (req.method === 'GET' && url.pathname === '/health') return json(res, 200, { service: 'yuki-anima', ready: true, auth: 'password-v1' });
+    if (access.login) {
+      const ip = req.headers['cf-ray'] ? String(req.headers['cf-connecting-ip'] || 'unknown') : req.socket.remoteAddress;
+      const retry = loginGuard.check(ip);
+      if (retry) { res.setHeader('Retry-After', String(retry)); return json(res, 429, { error: `尝试次数过多，请 ${Math.ceil(retry / 60)} 分钟后再试。` }); }
+      if (!loginRecord) return json(res, 503, { error: '电脑端尚未设置画室密码。' });
+      if (!String(req.headers['content-type'] || '').startsWith('application/json')) return json(res, 415, { error: '请使用网页登录。' });
+      let body = ''; let oversized = false;
+      for await (const chunk of req) {
+        if (Buffer.byteLength(body) + chunk.length > 1024) { oversized = true; break; }
+        body += chunk;
+      }
+      if (oversized) return json(res, 413, { error: '登录请求过大。' });
+      let data;
+      try { data = JSON.parse(body); } catch { return json(res, 400, { error: '登录请求格式错误。' }); }
+      if (!verifyPassword(data.password, loginRecord)) {
+        loginGuard.fail(ip);
+        return json(res, 401, { error: '密码不正确，请重试。' });
+      }
+      loginGuard.success(ip);
+      return json(res, 200, sessions.issue());
+    }
     if (req.method === 'GET' && url.pathname === '/api/session' && access.localSession) return json(res, 200, { accessKey: token });
     if (req.method === 'GET' && url.pathname === '/api/state') {
       return json(res, 200, { ...state, connected, submitting });

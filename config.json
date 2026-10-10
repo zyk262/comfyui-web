@@ -3,5 +3,11 @@
   "port": 3210,
   "workflow": "anima turbo.json",
   "pagesUrl": "https://zyk262.github.io/comfyui-web/",
-  "allowedOrigins": ["https://zyk262.github.io"]
+  "allowedOrigins": ["https://zyk262.github.io"],
+  "discovery": {
+    "repository": "zyk262/comfyui-web",
+    "branch": "runtime",
+    "path": "connection.json"
+  },
+  "proxyUrl": "http://127.0.0.1:7890"
 }

@@ -22,3 +22,14 @@ test('local token bootstrap cannot be accessed via the tunnel or a cross-site re
   assert.equal(checkRequest(request({ ...headers, 'sec-fetch-site': 'cross-site' }, '/api/session'), options).code, 403);
   assert.equal(checkRequest(request({ 'sec-fetch-site': 'same-origin', 'x-yuki-request': '1' }, '/api/session'), options).code, 403);
 });
+test('public login requires POST, the request marker, and an allowed browser origin', () => {
+  assert.equal(checkRequest(request({}, '/api/login'), options).code, 405);
+  assert.equal(checkRequest(request({}, '/api/login', 'POST'), options).code, 403);
+  assert.equal(checkRequest(request({ 'x-yuki-request': '1', origin: 'https://zyk262.github.io' }, '/api/login', 'POST'), options).login, true);
+  assert.equal(checkRequest(request({ 'x-yuki-request': '1', origin: 'https://example.com' }, '/api/login', 'POST'), options).code, 403);
+});
+test('session authentication can reject a retired permanent key on the public tunnel', () => {
+  const sessionOptions = { ...options, validateToken: key => key === 'active-session' };
+  assert.equal(checkRequest(request({ authorization: 'Bearer test-secret' }), sessionOptions).code, 401);
+  assert.equal(checkRequest(request({ authorization: 'Bearer active-session' }), sessionOptions).code, 200);
+});

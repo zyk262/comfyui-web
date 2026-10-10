@@ -25,6 +25,8 @@ jobs:
         run: |
           node --check server.mjs
           node --check launcher.mjs
+          node --check publisher.mjs
+          node --check auth.mjs
           node --check public/app.js
           node --test tests/*.test.mjs
       - uses: actions/configure-pages@v5
