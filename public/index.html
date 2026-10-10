@@ -3,15 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#f0eef8">
+  <meta name="theme-color" content="#0c0b1b">
   <meta name="description" content="雪间画室，一键生成一幅随机的 Anima 插画。">
   <title>雪间画室 · YUKI / ANIMA</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='20' fill='%23eeedf9'/%3E%3Ctext x='32' y='46' text-anchor='middle' font-size='43' fill='%238579b5'%3E✳%3C/text%3E%3C/svg%3E">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='20' fill='%23231c30'/%3E%3Ctext x='32' y='46' text-anchor='middle' font-size='43' fill='%23d4b2ff'%3E✳%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="./style.css">
   <script src="./app.js" defer></script>
 </head>
 <body>
-  <div class="atmosphere" aria-hidden="true"><div class="orb orb-pink"></div><div class="orb orb-blue"></div><div class="mountains"></div></div>
+  <div class="atmosphere" aria-hidden="true"><div class="orb orb-pink"></div><div class="orb orb-blue"></div><div class="mountains"></div><span class="comet comet-one"></span><span class="comet comet-two"></span></div>
   <canvas id="snow" aria-hidden="true"></canvas>
   <div class="page">
     <header class="site-header">
@@ -20,12 +20,12 @@
     </header>
     <main class="studio">
       <section class="intro" aria-labelledby="page-title">
-        <div class="eyebrow"><span></span> A LITTLE MAGIC, A NEW STORY</div>
+        <div class="eyebrow"><span></span> A LITTLE MOONLIGHT & MAGIC</div>
         <h1 id="page-title">让灵感，<br><span>轻轻落下。</span><svg class="title-star" width="38" height="38" viewBox="0 0 38 38" aria-hidden="true"><path d="M19 0c0 14-5 19-19 19 14 0 19 5 19 19 0-14 5-19 19-19C24 19 19 14 19 0" fill="currentColor"/></svg></h1>
-        <p class="intro-copy">不必想好故事的开头。<br>轻点一下，遇见一幅意想不到的画。</p>
+        <p class="intro-copy">今晚，也有一点小魔法。<br>轻点一下，让喜欢的世界悄悄发光。</p>
         <div class="control-card glass">
           <div class="card-top"><span class="mini-spark">✧</span><span>今日份的小小惊喜</span><span class="tiny-label">RANDOM DRAW</span></div>
-          <fieldset class="character-picker"><legend>今天，想与谁相遇？ <span>CHOOSE A CHARACTER</span></legend><div id="character-options" class="character-options"></div><p id="character-hint" class="character-hint" aria-live="polite">正在载入角色…</p><small>画师 · 服装 · 姿势 · 背景，每次随机</small></fieldset>
+          <fieldset class="character-picker"><legend>今天，想与谁相遇？ <span>CHOOSE A CHARACTER</span></legend><div id="character-options" class="character-options"></div><p id="character-hint" class="character-hint" aria-live="polite">正在载入角色…</p></fieldset>
           <button id="generate" class="button button-primary" type="button" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 19 11-11m-3-3 6 6M6 3v4M4 5h4m11 10v4m-2-2h4M14 2l1 3 3 1-3 1-1 3-1-3-3-1 3-1Z"/></svg><span id="generate-label">生成一张图片</span><span class="button-arrow">↗</span></button>
           <button id="view" class="button button-secondary" type="button" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8" cy="8" r="1.5"/><path d="m4 17 5-5 4 4 3-3 4 4"/></svg><span>查看图片</span><span class="button-arrow">↗</span></button>
           <div class="task-status" aria-live="polite"><span id="status-symbol" class="status-symbol">✦</span><span id="status-text">准备好了，下一张会是什么呢？</span></div>
@@ -39,13 +39,14 @@
         <div class="art-frame glass">
           <div class="frame-header"><span><i></i> YOUR LITTLE MASTERPIECE</span><span class="frame-number">01 / ∞</span></div>
           <div id="artboard" class="artboard">
-            <div id="placeholder" class="placeholder"><img class="winter-art" src="./winter.svg" alt="柔和的雪山、樱色天空与冬日小屋插画"><div class="placeholder-caption"><span class="caption-line"></span><p>一个故事，正在等你。</p><small>YOUR NEXT STORY STARTS HERE</small></div></div>
+            <div id="placeholder" class="placeholder"><img class="winter-art" src="./winter.svg" alt="月夜雪山、亮着灯的小屋与戴围巾的小雪兔"><div class="placeholder-caption"><span class="caption-line"></span><p>一个故事，正在等你。</p><small>YOUR NEXT STORY STARTS HERE</small></div></div>
             <img id="result" class="result-image" alt="ComfyUI 生成的随机插画" hidden>
             <div id="drawing-overlay" class="drawing-overlay" hidden><div class="drawing-spinner">✳</div><span id="drawing-label">正在让想象变成画面</span><small id="elapsed">00:00</small></div>
           </div>
           <div class="frame-footer"><span id="art-caption">等待一场灵感的初雪</span><span class="frame-flower">✧</span></div>
         </div>
         <span class="corner-spark corner-spark-one" aria-hidden="true">✧</span><span class="corner-spark corner-spark-two" aria-hidden="true">✳</span>
+        <span class="moon-charm" aria-hidden="true">☾</span>
       </section>
     </main>
     <footer class="site-footer"><span>雪落无声，想象有形。</span><span>MADE OF SNOW & A LITTLE IMAGINATION <span class="footer-spark">✦</span></span></footer>

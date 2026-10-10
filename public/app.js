@@ -64,7 +64,7 @@ function updateCharacters(waiting = false) {
     button.classList.toggle('selected', selected);
     button.disabled = waiting;
   }
-  if (selectedCharacter) $('character-hint').textContent = `已选择 ${selectedCharacter.name} · 角色固定`;
+  if (selectedCharacter) $('character-hint').textContent = `✦ 已选择 ${selectedCharacter.name}`;
 }
 
 function openLogin() {
@@ -296,10 +296,10 @@ const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 let flakes = [], width = 0, height = 0, lastTime = 0, animationId;
 function resizeSnow() {
   width = innerWidth; height = innerHeight;
-  const dpr = Math.min(devicePixelRatio || 1, 2);
+  const dpr = Math.min(devicePixelRatio || 1, width < 760 ? 1.25 : 1.5);
   canvas.width = width * dpr; canvas.height = height * dpr;
   context.setTransform(dpr, 0, 0, dpr, 0, 0);
-  flakes = Array.from({ length: width < 760 ? 36 : 68 }, () => ({ x: Math.random() * width, y: Math.random() * height, radius: .9 + Math.random() * 2.2, speed: 10 + Math.random() * 24, sway: Math.random() * 6.28, opacity: .3 + Math.random() * .5 }));
+  flakes = Array.from({ length: width < 760 ? 34 : 60 }, () => ({ x: Math.random() * width, y: Math.random() * height, layer: Math.floor(Math.random() * 3), speed: 12 + Math.random() * 26, sway: Math.random() * 6.28 }));
 }
 function snow(time) {
   if (reducedMotion.matches) return;
@@ -310,13 +310,24 @@ function snow(time) {
     flake.y += flake.speed * delta;
     flake.x += Math.sin(time / 2600 + flake.sway) * 8 * delta;
     if (flake.y > height + 5) { flake.y = -5; flake.x = Math.random() * width; }
-    context.beginPath(); context.arc(flake.x, flake.y, flake.radius, 0, Math.PI * 2);
-    context.fillStyle = `rgba(255,255,255,${flake.opacity})`; context.fill();
+  }
+  // Three depth layers share three canvas fills, instead of a fill per flake.
+  for (let layer = 0; layer < 3; layer++) {
+    context.beginPath();
+    const radius = .8 + layer * .7;
+    for (const flake of flakes) {
+      if (flake.layer !== layer) continue;
+      context.moveTo(flake.x + radius, flake.y);
+      context.arc(flake.x, flake.y, radius, 0, Math.PI * 2);
+    }
+    context.fillStyle = `rgba(232,226,255,${.25 + layer * .22})`;
+    context.fill();
   }
   animationId = requestAnimationFrame(snow);
 }
 function startSnow() {
   cancelAnimationFrame(animationId);
+  document.body?.classList.toggle('motion-paused', document.hidden);
   if (!reducedMotion.matches && !document.hidden) { lastTime = 0; animationId = requestAnimationFrame(snow); }
 }
 addEventListener('resize', resizeSnow);
