@@ -17,6 +17,7 @@ connection ||= { bridge: localPage ? location.origin : '', key: '' };
 if (connection.expiresAt && connection.expiresAt <= Date.now()) connection.key = '';
 let imageLoad, blobUrls = [], readyCards = [], connectionVersion = 0, stateRevision = 0;
 let viewerIndex = 0, viewerAnimation;
+let drawRitual;
 let lastState;
 let selectedCharacter;
 const characterButtons = [];
@@ -115,8 +116,31 @@ function cancelImageLoad() {
   imageLoad?.controller.abort();
   imageLoad = null;
 }
+function clearDrawRitual() {
+  if (drawRitual) { clearTimeout(drawRitual.timer); drawRitual.resolve(); }
+  drawRitual = null;
+  $('summon-sequence').classList.remove('drawing');
+  $('summon-sequence').classList.remove('settled');
+}
+function startDrawRitual(startedAt = Date.now()) {
+  const elapsed = Math.max(0, Date.now() - startedAt);
+  const remaining = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : Math.max(0, 10000 - elapsed);
+  const ritual = { finished: remaining === 0, jobId: active?.id || null };
+  ritual.promise = new Promise(resolve => { ritual.resolve = resolve; });
+  drawRitual = ritual;
+  $('summon-sequence').style.setProperty('--draw-offset', `${-elapsed}ms`);
+  $('summon-sequence').classList.toggle('drawing', true);
+  $('summon-sequence').classList.toggle('settled', ritual.finished);
+  if (!remaining) ritual.resolve();
+  else ritual.timer = setTimeout(() => {
+    ritual.finished = true; ritual.resolve();
+    if (drawRitual === ritual) $('summon-sequence').classList.toggle('settled', true);
+    if (drawRitual === ritual && lastState) render(lastState);
+  }, remaining);
+}
 function resetImage() {
   cancelImageLoad();
+  clearDrawRitual();
   lastImageId = null;
   $('result').hidden = true;
   view.disabled = true;
@@ -194,6 +218,8 @@ async function loadImage(image) {
     if (!isCurrent()) return;
     const failed = settled.find(item => item.status === 'rejected');
     if (failed) throw failed.reason;
+    if (drawRitual && !drawRitual.finished) await drawRitual.promise;
+    if (!isCurrent()) return;
     const decoded = settled.map(item => item.value);
     const cards = decoded.map((item, index) => makeCard(item, index, image));
     $('result').replaceChildren(...cards);
@@ -204,6 +230,7 @@ async function loadImage(image) {
     blobUrls = nextUrls.splice(0);
     readyCards = decoded;
     lastImageId = image.id;
+    clearDrawRitual();
     clientError = '';
     render(lastState);
   } catch (error) {
@@ -224,6 +251,13 @@ function render(state) {
   latest = state.latest;
   const busy = Boolean(active || submitting || state.submitting);
   const loading = !busy && Boolean(latest && latest.id !== lastImageId);
+  if (busy && drawRitual?.jobId && active?.id && drawRitual.jobId !== active.id) {
+    cancelImageLoad(); clearDrawRitual();
+  }
+  if (busy && !drawRitual) startDrawRitual(active?.startedAt || Date.now());
+  if (active && drawRitual && !drawRitual.jobId) drawRitual.jobId = active.id;
+  if (!busy && !loading) clearDrawRitual();
+  const drawing = Boolean(drawRitual && !drawRitual.finished);
   const waiting = busy || loading;
   const imageReady = !waiting && Boolean(latest && latest.id === lastImageId);
   if (busy || !latest) cancelImageLoad();
@@ -243,10 +277,10 @@ function render(state) {
   $('progress-track').classList.toggle('indeterminate', loading || (busy && !active?.progress));
   $('progress-bar').style.width = `${active?.progress || 0}%`;
   $('drawing-overlay').hidden = !waiting;
-  $('drawing-label').textContent = loading ? '正在加载新图片，请稍候' : '星光汇聚，画面即将揭晓';
+  $('drawing-label').textContent = drawing ? '星海流转，捕捉这一次的相遇' : loading ? '惊喜即将揭晓，请稍候' : '星光汇聚，画面即将揭晓';
   $('elapsed').hidden = loading;
   $('status-symbol').textContent = waiting ? '❄' : '✦';
-  $('status-text').textContent = active ? `正在召唤你的画面${active.progress ? ` · ${active.progress}%` : ''}` : submitting || state.submitting ? '正在开启一次新的召唤' : loading ? '绘制完成，正在加载新图片…' : !state.connected ? '打开 ComfyUI 后，就可以开始抽卡了' : imageReady ? `画好了，用了 ${latest.seconds} 秒。点击卡片查看完整图片。` : '准备好了，三份惊喜正在等你。';
+  $('status-text').textContent = active ? `正在召唤你的画面${active.progress ? ` · ${active.progress}%` : ''}` : submitting || state.submitting ? '正在开启一次新的召唤' : loading ? drawing ? '正在加载新图片，星光正在挑选你的惊喜…' : '绘制完成，正在加载新图片…' : !state.connected ? '打开 ComfyUI 后，就可以开始抽卡了' : imageReady ? `画好了，用了 ${latest.seconds} 秒。点击卡片查看完整图片。` : '准备好了，三份惊喜正在等你。';
   const error = state.error || clientError;
   $('error').hidden = !error;
   $('error').textContent = error || '';
