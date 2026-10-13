@@ -66,7 +66,7 @@ HTTPS 请求和返回图片经 Cloudflare 中转。工作流未调用付费生�
 
 ## 发布与检查
 
-Settings → Pages → Source 为 GitHub Actions。推送 main 后，检查代码并仅发布 `public/` 静态网页。
+Settings → Pages → Source 为 GitHub Actions。推送 main 后，检查代码并仅发布 `public/` 静态网页。发布前自动运行 `stamp-assets.mjs`，给样式和脚本添加内容哈希版本号，避免手机把新页面与旧缓存混用。本地修改样式或脚本后，也可运行 `node stamp-assets.mjs` 更新本地页面的资源版本。
 
 运行 `node --check server.mjs`、`node --check launcher.mjs`、`node --check publisher.mjs`、`node --check public/app.js`，以及 `node --test tests/*.test.mjs`。
 

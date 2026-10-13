@@ -29,6 +29,8 @@ jobs:
           node --check auth.mjs
           node --check public/app.js
           node --test tests/*.test.mjs
+      - name: Stamp asset versions to prevent stale mobile caches
+        run: node stamp-assets.mjs
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with:
