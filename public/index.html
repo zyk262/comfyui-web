@@ -7,8 +7,9 @@
   <meta name="description" content="雪间画室，抽取三张 Anima 插画，让星光揭晓这次的相遇。">
   <title>雪间画室 · YUKI / ANIMA</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='20' fill='%23231c30'/%3E%3Ctext x='32' y='46' text-anchor='middle' font-size='43' fill='%23d4b2ff'%3E✳%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="./style.css?v=b33e42f4721a">
-  <script src="./app.js?v=2b32971b0d4c" defer></script>
+  <link rel="stylesheet" href="./style.css?v=086015bd7986">
+  <script src="./remotion-player.js?v=13d6a2394585" defer></script>
+  <script src="./app.js?v=08b64821443d" defer></script>
 </head>
 <body>
   <div class="atmosphere" aria-hidden="true"><div class="orb orb-pink"></div><div class="orb orb-blue"></div><div class="mountains"></div><span class="comet comet-one"></span><span class="comet comet-two"></span></div>
@@ -43,11 +44,7 @@
             <div id="result" class="card-deck" aria-label="本次抽取的图片卡片" hidden></div>
             <div id="drawing-overlay" class="drawing-overlay" hidden>
               <div id="summon-sequence" class="summon-sequence" aria-hidden="true">
-                <div class="draw-halo"></div><div class="draw-path"></div>
-                <div class="deck-ribbon"><div class="deck-stream"><span>☾</span><span>✧</span><span>☾</span><span>✦</span><span>☾</span><span>✧</span><span>☾</span><span>✦</span><span>☾</span><span>✧</span><span>☾</span><span>✦</span><span>☾</span><span>✧</span><span>☾</span></div></div>
-                <div class="draw-slots"><i></i><i></i><i></i></div>
-                <span class="picked-card pick-one"><span>☾</span><small>YUKI · ANIMA</small></span><span class="picked-card pick-two"><span>✧</span><small>YUKI · ANIMA</small></span><span class="picked-card pick-three"><span>☾</span><small>YUKI · ANIMA</small></span>
-                <span class="draw-spark spark-a">✦</span><span class="draw-spark spark-b">✧</span>
+                <div id="remotion-draw"></div>
               </div><span id="drawing-label">星光汇聚，召唤开始</span><small id="elapsed">00:00</small><span class="summon-note">让命运，轻轻落在手心</span>
             </div>
           </div>

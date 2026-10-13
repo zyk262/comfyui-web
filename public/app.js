@@ -119,22 +119,27 @@ function cancelImageLoad() {
 function clearDrawRitual() {
   if (drawRitual) { clearTimeout(drawRitual.timer); drawRitual.resolve(); }
   drawRitual = null;
+  globalThis.YukiRemotion?.reset();
   $('summon-sequence').classList.remove('drawing');
   $('summon-sequence').classList.remove('settled');
 }
 function startDrawRitual(startedAt = Date.now()) {
   const elapsed = Math.max(0, Date.now() - startedAt);
-  const remaining = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : Math.max(0, 10000 - elapsed);
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const remaining = reduced ? 0 : Math.max(0, 10000 - elapsed);
   const ritual = { finished: remaining === 0, jobId: active?.id || null };
   ritual.promise = new Promise(resolve => { ritual.resolve = resolve; });
   drawRitual = ritual;
-  $('summon-sequence').style.setProperty('--draw-offset', `${-elapsed}ms`);
+  globalThis.YukiRemotion?.play(elapsed, reduced);
   $('summon-sequence').classList.toggle('drawing', true);
   $('summon-sequence').classList.toggle('settled', ritual.finished);
   if (!remaining) ritual.resolve();
   else ritual.timer = setTimeout(() => {
     ritual.finished = true; ritual.resolve();
-    if (drawRitual === ritual) $('summon-sequence').classList.toggle('settled', true);
+    if (drawRitual === ritual) {
+      globalThis.YukiRemotion?.hold();
+      $('summon-sequence').classList.toggle('settled', true);
+    }
     if (drawRitual === ritual && lastState) render(lastState);
   }, remaining);
 }

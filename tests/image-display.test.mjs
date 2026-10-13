@@ -16,6 +16,7 @@ const idle = latest => ({ active: null, latest, connected: true });
 async function browser({ reduced = true } = {}) {
   const elements = new Map();
   const downloads = [], decodes = [], revoked = [];
+  const playback = [];
   let state = idle(null), pendingState;
   let clock = Date.now(), timerId = 0;
   const timers = new Map();
@@ -39,6 +40,11 @@ async function browser({ reduced = true } = {}) {
   }
   const context = vm.createContext({
     URL: BrowserURL, AbortSignal, AbortController, console, Date: ClockDate,
+    YukiRemotion: {
+      play(elapsed, reduced) { playback.push(['play', elapsed, reduced]); },
+      hold() { playback.push(['hold']); },
+      reset() { playback.push(['reset']); }
+    },
     location: { hostname: 'localhost', origin: 'http://localhost:3210', pathname: '/', hash: '' },
     sessionStorage: { getItem: () => JSON.stringify({ bridge: 'http://localhost:3210', key: 'test-session' }), setItem() {} },
     document: { getElementById: element, createElement: () => element('button-' + elements.size), hidden: false, addEventListener() {} },
@@ -61,7 +67,7 @@ async function browser({ reduced = true } = {}) {
   vm.runInContext(source + '\n globalThis.app = { render, refresh, resetImage, reconnect() { connectionVersion++; resetImage(); } };', context);
   await tick();
   return {
-    app: context.app, element, downloads, decodes, revoked,
+    app: context.app, element, downloads, decodes, revoked, playback,
     now: () => clock,
     timerCount: () => timers.size,
     advance(ms) { clock+=ms; for(const[id,timer]of [...timers])if(timer.at<=clock){timers.delete(id);timer.fn();} },
@@ -79,6 +85,19 @@ async function browser({ reduced = true } = {}) {
     }
   };
 }
+
+test('Remotion resumes an active draw once, holds its final frame, and stops on reconnect', async () => {
+  const b = await browser({ reduced: false });
+  const state = { ...idle(null), active: { id: 'resumed', startedAt: b.now()-3200, progress: 30 } };
+  b.app.render(state);
+  b.app.render(state);
+  assert.deepEqual(b.playback.filter(call => call[0] === 'play'), [['play',3200,false]]);
+  b.advance(6800);
+  assert.equal(b.playback.filter(call => call[0] === 'hold').length, 1);
+  b.app.reconnect();
+  assert.equal(b.playback.at(-1)[0], 'reset');
+  assert.equal(b.timerCount(), 0);
+});
 
 test('old image stays hidden through slow transfer and decode; repeated polls fetch once', async () => {
   const b = await browser();

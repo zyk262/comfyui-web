@@ -200,6 +200,7 @@ const staticFiles = new Map([
   ['/index.html', ['index.html', 'text/html; charset=utf-8']],
   ['/style.css', ['style.css', 'text/css; charset=utf-8']],
   ['/app.js', ['app.js', 'text/javascript; charset=utf-8']],
+  ['/remotion-player.js', ['remotion-player.js', 'text/javascript; charset=utf-8']],
   ['/site-config.json', ['site-config.json', 'application/json; charset=utf-8']],
   ['/characters.json', ['characters.json', 'application/json; charset=utf-8']],
   ['/winter.svg', ['winter.svg', 'image/svg+xml']]

@@ -22,6 +22,7 @@ jobs:
         with:
           node-version: '22'
       - name: Check code and workflow adaptation
+        # Player is prebuilt in public/; the local bridge needs no npm packages.
         run: |
           node --check server.mjs
           node --check launcher.mjs
@@ -29,6 +30,11 @@ jobs:
           node --check auth.mjs
           node --check public/app.js
           node --test tests/*.test.mjs
+      - name: Build Remotion animation
+        run: |
+          npm ci --prefix animation --no-audit --no-fund
+          node animation/node_modules/typescript/bin/tsc --project animation/tsconfig.json
+          node animation/build-player.mjs
       - name: Stamp asset versions to prevent stale mobile caches
         run: node stamp-assets.mjs
       - uses: actions/configure-pages@v5

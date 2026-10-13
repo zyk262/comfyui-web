@@ -68,6 +68,8 @@ HTTPS 请求和返回图片经 Cloudflare 中转。工作流未调用付费生�
 
 ## 发布与检查
 
+抽卡动画由 `animation/src/GachaDraw.tsx` 的 Remotion 合成制作，使用网页内嵌 Player 播放 10 秒、60 fps 的卡带展开与三次抽取动画。三张图片下载和解码完成、抽卡动画结束后才统一翻牌。动画结束后若生成尚未完成，保留最终卡背；已有任务重新连接时从对应时间继续。编辑方法见 `animation/README.md`。日常启动不需要安装动画开发依赖。
+
 Settings → Pages → Source 为 GitHub Actions。推送 main 后，检查代码并仅发布 `public/` 静态网页。发布前自动运行 `stamp-assets.mjs`，给样式和脚本添加内容哈希版本号，避免手机把新页面与旧缓存混用。本地修改样式或脚本后，也可运行 `node stamp-assets.mjs` 更新本地页面的资源版本。
 
 运行 `node --check server.mjs`、`node --check launcher.mjs`、`node --check publisher.mjs`、`node --check public/app.js`，以及 `node --test tests/*.test.mjs`。

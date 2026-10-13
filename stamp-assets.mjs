@@ -8,7 +8,8 @@ const index = new URL('index.html', publicDir);
 let html = await readFile(index, 'utf8');
 const assets = [
   ['style.css', /(href="\.\/style\.css)(?:\?[^\"]*)?"/],
-  ['app.js', /(src="\.\/app\.js)(?:\?[^\"]*)?"/]
+  ['app.js', /(src="\.\/app\.js)(?:\?[^\"]*)?"/],
+  ['remotion-player.js', /(src="\.\/remotion-player\.js)(?:\?[^\"]*)?"/]
 ];
 for (const [name, pattern] of assets) {
   const bytes = await readFile(new URL(name, publicDir));
