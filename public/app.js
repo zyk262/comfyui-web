@@ -213,7 +213,7 @@ function render(state) {
   $('connection-text').textContent = state.connected ? '画室已连接' : '等待 ComfyUI';
   generate.disabled = waiting || !state.connected || !selectedCharacter;
   updateCharacters(waiting);
-  $('generate-label').textContent = loading ? '正在迎接三张卡片' : busy ? '正在召唤，请稍候' : '抽取三张图片';
+  $('generate-label').textContent = loading ? '正在迎接三张卡片' : busy ? '正在召唤，请稍候' : '抽取图片';
   view.disabled = !imageReady;
   $('result').hidden = !imageReady;
   $('placeholder').hidden = imageReady;
