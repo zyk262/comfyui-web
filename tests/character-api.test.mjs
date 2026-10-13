@@ -10,6 +10,7 @@ import { parseCharacters, QUALITY_PROMPT } from '../characters.mjs';
 
 test('authenticated Generate validates the character ID and sends catalog prompts plus plugin random switches', { timeout: 15000 }, async () => {
   const root = fileURLToPath(new URL('../', import.meta.url));
+  const config = JSON.parse(await readFile(path.join(root, 'config.json'), 'utf8'));
   const catalog = parseCharacters(await readFile(path.join(root, '角色.txt'), 'utf8'));
   const selected = catalog[0];
   const local = await mkdtemp(path.join(os.tmpdir(), 'yuki-character-api-'));
@@ -21,7 +22,7 @@ test('authenticated Generate validates the character ID and sends catalog prompt
       submitted = JSON.parse(body); return res.end(JSON.stringify({ prompt_id: 'fixture-job' }));
     }
     if (req.url === '/object_info') {
-      const workflow = JSON.parse(await readFile(path.join(root, 'anima turbo.json'), 'utf8'));
+      const workflow = JSON.parse(await readFile(path.join(root, config.workflow), 'utf8'));
       return res.end(JSON.stringify(Object.fromEntries(Object.values(workflow).map(node => [node.class_type, {}]))));
     }
     if (req.url === '/queue') return res.end(JSON.stringify({ queue_pending: [[0, 'fixture-job']], queue_running: [] }));

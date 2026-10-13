@@ -11,7 +11,8 @@ import { parseCharacters } from '../characters.mjs';
 async function fixture() {
   const root = fileURLToPath(new URL('../', import.meta.url));
   const local = await mkdtemp(path.join(os.tmpdir(), 'yuki-batch-'));
-  const workflow = JSON.parse(await readFile(path.join(root, 'anima turbo.json'), 'utf8'));
+  const config = JSON.parse(await readFile(path.join(root, 'config.json'), 'utf8'));
+  const workflow = JSON.parse(await readFile(path.join(root, config.workflow), 'utf8'));
   const character = parseCharacters(await readFile(path.join(root, '角色.txt'), 'utf8'))[0];
   const submissions = [], histories = new Map();
   const comfy = http.createServer(async (req, res) => {

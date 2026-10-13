@@ -1,7 +1,7 @@
 {
   "comfyUrl": "http://127.0.0.1:8188",
   "port": 3210,
-  "workflow": "anima turbo.json",
+  "workflow": "anima turbo 1.json",
   "pagesUrl": "https://zyk262.github.io/comfyui-web/",
   "allowedOrigins": ["https://zyk262.github.io"],
   "discovery": {

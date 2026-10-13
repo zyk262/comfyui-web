@@ -5,7 +5,8 @@ import { parseCharacters, QUALITY_PROMPT } from '../characters.mjs';
 import { prepareWorkflow, characterRandomMetadata, ARTIST_TAGS } from '../workflow.mjs';
 
 const characters = parseCharacters(await readFile(new URL('../角色.txt', import.meta.url), 'utf8'));
-const original = JSON.parse(await readFile(new URL('../anima turbo.json', import.meta.url), 'utf8'));
+const config = JSON.parse(await readFile(new URL('../config.json', import.meta.url), 'utf8'));
+const original = JSON.parse(await readFile(new URL('../' + config.workflow, import.meta.url), 'utf8'));
 
 test('all published buttons map to the exact character catalog, with valid unique names', async () => {
   assert.ok(characters.length > 0);
