@@ -88,6 +88,6 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     const config = JSON.parse(await readFile(path.join(root, 'config.json'), 'utf8'));
     const publisher = await createPublisher(config);
     await publisher.verify();
-    console.log('GitHub connection configured. Double-click start-remote.cmd next.');
+    console.log('GitHub connection configured. Double-click 中文启动.cmd next.');
   } catch (error) { console.error(error.message); process.exitCode = 1; }
 }

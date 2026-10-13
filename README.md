@@ -5,7 +5,7 @@
 ## 日常使用
 
 1. 打开 ComfyUI Desktop。
-2. 双击 `start-remote.cmd`，等待窗口显示 Remote atelier is ready，保持窗口运行。
+2. 双击 `中文启动.cmd`，等待窗口显示 Remote atelier is ready，保持窗口运行。
 3. 手机打开固定网页，输入自己的画室密码。无需填写服务地址，无需每次复制私人链接。
 4. 选择角色按钮，再点击“生成一张图片”。生成与图片加载期间角色按钮暂时禁用。
 
@@ -26,7 +26,7 @@
 
 该令牌用于自动更新通道地址；权限能够修改此仓库文件，因此应只选这个仓库。令牌经 Windows DPAPI 加密保存在 `.local/github-token.dpapi`，绑定当前 Windows 用户。授权过期或撤销后重新运行配置工具。
 
-程序也可复用已有的 Git 凭据。如果尚未配置，首次双击 `start-remote.cmd` 会提示完成一次性配置。
+程序也可复用已有的 Git 凭据。如果尚未配置，首次双击 `中文启动.cmd` 会提示完成一次性配置。
 
 ## 登录与安全
 
@@ -54,7 +54,7 @@ HTTPS 请求和返回图片经 Cloudflare 中转。工作流未调用付费生�
 
 网页生成使用 `anima turbo.json`，其中负向提示词固定为 `worst quality, low quality, score_1, score_2, score_3, artist name`。生成接口仅接收角色 ID，从电脑端 `角色.txt` 读取提示词，写入提交副本中 `AnimaPromptPlusClipEncode.character_tags`；`quality_prompt` 固定为用户指定的正向质量提示词。`artist_tags` 固定为 `@naga u, @saku usako \(rabbit\), @tsukiman, @hana kazari, `。通过插件原生 `anima_selector_random` 元数据关闭角色和画师随机，并开启服装、姿势与背景随机。采样种子每次更新，模型、8 步采样、CFG 1、采样器和 920×1536 分辨率保持原设置。
 
-`角色.txt` 每行格式为“中文名称：提示词”。`public/characters.json` 只含网页显示的角色 ID 与名称；增删或重命名角色时需同步此文件并重新发布网页。仅修改已有角色的提示词时，电脑端下一次生成会自动读取。桥接代码更新后需重新启动 `start-remote.cmd`，网页则刷新即可。
+`角色.txt` 每行格式为“中文名称：提示词”。`public/characters.json` 只含网页显示的角色 ID 与名称；增删或重命名角色时需同步此文件并重新发布网页。仅修改已有角色的提示词时，电脑端下一次生成会自动读取。桥接代码更新后需重新启动 `中文启动.cmd`，网页则刷新即可。
 
 随机工作流测试中曾返回噪点图，另一次随机生成及已知参数复测正常。网页按 ComfyUI 实际返回的结果显示，未添加伪造图片或静默替换采样参数。
 

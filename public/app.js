@@ -85,7 +85,7 @@ async function discover() {
     const url = new URL(discoveryUrl);
     url.searchParams.set('t', String(Date.now()));
     const response = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(15000), referrerPolicy: 'no-referrer' });
-    if (!response.ok) throw new Error('请先在电脑上双击 start-remote.cmd。');
+    if (!response.ok) throw new Error('请先在电脑上双击 中文启动.cmd。');
     const record = await response.json();
     if (record.version !== 1 || !record.online || Date.parse(record.expiresAt) <= Date.now()) throw new Error('画室暂时离线，请在电脑上启动远程画室。');
     const bridge = normalizeBridge(record.bridgeUrl);
