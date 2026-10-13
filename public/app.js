@@ -224,10 +224,10 @@ function render(state) {
   $('progress-track').classList.toggle('indeterminate', loading || (busy && !active?.progress));
   $('progress-bar').style.width = `${active?.progress || 0}%`;
   $('drawing-overlay').hidden = !waiting;
-  $('drawing-label').textContent = loading ? '正在加载新图片，三张一起揭晓' : active ? `正在绘制第 ${Math.min((active.completed || 0) + 1, active.total || 3)} / ${active.total || 3} 张卡片` : '星光汇聚，召唤开始';
+  $('drawing-label').textContent = loading ? '正在加载新图片，请稍候' : '星光汇聚，画面即将揭晓';
   $('elapsed').hidden = loading;
   $('status-symbol').textContent = waiting ? '❄' : '✦';
-  $('status-text').textContent = active ? `第 ${Math.min((active.completed || 0) + 1, active.total || 3)} / ${active.total || 3} 张 · ${active.stage}${active.progress ? ` · ${active.progress}%` : ''}` : submitting || state.submitting ? '正在开启一次新的召唤' : loading ? '绘制完成，正在加载新图片…' : !state.connected ? '打开 ComfyUI 后，就可以开始抽卡了' : imageReady ? `画好了，用了 ${latest.seconds} 秒。点击卡片查看完整图片。` : '准备好了，三份惊喜正在等你。';
+  $('status-text').textContent = active ? `正在召唤你的画面${active.progress ? ` · ${active.progress}%` : ''}` : submitting || state.submitting ? '正在开启一次新的召唤' : loading ? '绘制完成，正在加载新图片…' : !state.connected ? '打开 ComfyUI 后，就可以开始抽卡了' : imageReady ? `画好了，用了 ${latest.seconds} 秒。点击卡片查看完整图片。` : '准备好了，三份惊喜正在等你。';
   const error = state.error || clientError;
   $('error').hidden = !error;
   $('error').textContent = error || '';

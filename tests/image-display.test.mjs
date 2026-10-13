@@ -185,5 +185,5 @@ test('a state poll started before Generate cannot flash the previous result afte
   assert.equal(b.element('result').hidden, true);
   assert.equal(b.element('drawing-overlay').hidden, false);
   assert.equal(b.element('view').disabled, true);
-  assert.match(b.element('status-text').textContent, /绘制中/);
+  assert.match(b.element('status-text').textContent, /正在召唤/);
 });
