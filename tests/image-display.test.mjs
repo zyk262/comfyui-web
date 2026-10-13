@@ -92,7 +92,7 @@ test('Remotion resumes an active draw once, holds its final frame, and stops on 
   b.app.render(state);
   b.app.render(state);
   assert.deepEqual(b.playback.filter(call => call[0] === 'play'), [['play',3200,false]]);
-  b.advance(6800);
+  b.advance(11800);
   assert.equal(b.playback.filter(call => call[0] === 'hold').length, 1);
   b.app.reconnect();
   assert.equal(b.playback.at(-1)[0], 'reset');
@@ -168,14 +168,14 @@ test('three cards are committed together only after every download and decode, a
   assert.match(b.element('viewer-caption').textContent, /02 \/ 3/);
 });
 
-test('fast pictures wait for the ten-second draw and polling neither restarts the timer nor downloads another set', async () => {
+test('fast pictures wait for the fifteen-second draw and polling neither restarts the timer nor downloads another set', async () => {
   const b=await browser({reduced:false});
   const draw={id:'fast',seconds:1,images:[image('a'),image('b'),image('c')]};
   b.app.render({active:{id:'fast',startedAt:b.now(),stage:'绘制中'},latest:null,connected:true});
   b.app.render(idle(draw));
   for(let n=0;n<3;n++)await b.finishDownload(n,['a','b','c'][n]);
   for(const decode of b.decodes)decode.resolve(); await tick();
-  b.app.render(idle(draw)); b.advance(9999); await tick();
+  b.app.render(idle(draw)); b.advance(14999); await tick();
   assert.deepEqual(b.shown(),[]);
   assert.equal(b.element('result').hidden,true);
   assert.equal(b.element('view').disabled,true);
@@ -187,11 +187,11 @@ test('fast pictures wait for the ten-second draw and polling neither restarts th
   assert.equal(b.timerCount(),0);
 });
 
-test('a slower generation completes after the draw without starting another ten-second wait', async () => {
+test('a slower generation completes after the draw without starting another fifteen-second wait', async () => {
   const b=await browser({reduced:false});
   const job={id:'slow',startedAt:b.now(),stage:'绘制中'};
   b.app.render({active:job,latest:null,connected:true});
-  b.advance(12000); await tick();
+  b.advance(18000); await tick();
   b.app.render({active:job,latest:null,connected:true});
   assert.equal(b.timerCount(),0);
   assert.equal(b.element('drawing-overlay').hidden,false);
@@ -206,7 +206,7 @@ test('reconnecting during the draw cancels the delayed reveal and releases decod
   b.app.render({active:{id:'retired',startedAt:b.now(),stage:'绘制中'},latest:null,connected:true});
   b.app.render(idle(image('retired')));
   await b.finishDownload(0,'retired'); b.decodes[0].resolve(); await tick();
-  b.app.reconnect(); await tick(); b.advance(10000); await tick();
+  b.app.reconnect(); await tick(); b.advance(15000); await tick();
   assert.equal(b.timerCount(),0);
   assert.deepEqual(b.shown(),[]);
   assert.equal(b.element('result').hidden,true);

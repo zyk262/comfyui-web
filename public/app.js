@@ -126,7 +126,7 @@ function clearDrawRitual() {
 function startDrawRitual(startedAt = Date.now()) {
   const elapsed = Math.max(0, Date.now() - startedAt);
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const remaining = reduced ? 0 : Math.max(0, 10000 - elapsed);
+  const remaining = reduced ? 0 : Math.max(0, 15000 - elapsed);
   const ritual = { finished: remaining === 0, jobId: active?.id || null };
   ritual.promise = new Promise(resolve => { ritual.resolve = resolve; });
   drawRitual = ritual;

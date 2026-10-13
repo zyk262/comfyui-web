@@ -44,7 +44,7 @@ const DrawnCard: React.FC<{index: number; seconds: number; frame: number; fps: n
   if (age < 0) return null;
   const lift = interpolate(age, [0, .48], [0, 1], {...clamp, easing: smooth});
   const land = spring({frame: Math.max(0, frame-(start+.48)*fps), fps, config: {damping: 19, stiffness: 90, mass: 1.15}});
-  const targetX = (index-1)*194;
+  const targetX = (index-1)*265;
   const x = land * targetX;
   const y = interpolate(lift, [0,1], [218,106]) + land*206;
   const scale = interpolate(lift, [0,1], [.7,1.08]) - land*.08;
@@ -78,7 +78,9 @@ const DrawnCard: React.FC<{index: number; seconds: number; frame: number; fps: n
 export const GachaDraw: React.FC = () => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
-  const seconds = frame/fps;
+  // Stretch the complete choreography to 15 seconds, including spring motion.
+  const sceneFrame = frame / 1.5;
+  const seconds = sceneFrame/fps;
   const ringReveal = interpolate(seconds,[0,1.8,7.6,9],[0,1,1,.25],clamp);
   const settle = interpolate(seconds,[7.6,9.3],[0,1],{...clamp,easing:smooth});
   return <AbsoluteFill style={{overflow:'hidden',perspective:1200}}>
@@ -99,7 +101,7 @@ export const GachaDraw: React.FC = () => {
       </g>
     </svg>
     <Deck seconds={seconds}/>
-    {[0,1,2].map(index=><DrawnCard key={index} index={index} seconds={seconds} frame={frame} fps={fps}/>)}
+    {[0,1,2].map(index=><DrawnCard key={index} index={index} seconds={seconds} frame={sceneFrame} fps={fps}/>)}
     <svg width="900" height="600" style={{position:'absolute',opacity:settle}}>
       <path d="M166 494H390 M510 494H734" stroke="#d5b6ef" strokeOpacity=".22"/>
       <path d="M450 480L454 490L464 494L454 498L450 508L446 498L436 494L446 490Z" fill="#edc8e5"/>

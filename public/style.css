@@ -185,7 +185,7 @@ body.motion-paused *,body.motion-paused *::before,body.motion-paused *::after{an
 .artboard.has-cards { aspect-ratio: auto; min-height: 400px; padding: 26px 14px; background: radial-gradient(ellipse at 50% 30%,#66508130,transparent 70%),#141526; overflow: visible; }
 .artboard.is-summoning .placeholder { opacity: .2; }
 .art-frame:has(.has-cards),.art-frame:has(.is-summoning) { transform: none; }
-.card-deck { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); align-items: center; gap: 12px; width: 100%; perspective: 1400px; }
+.card-deck { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); align-items: center; gap: 48px; width: 100%; perspective: 1400px; }
 .summon-card { position: relative; display: block; min-width: 0; width: 100%; aspect-ratio: 3/5; padding: 0; border: 0; border-radius: 13px; background: transparent; cursor: zoom-in; color: #e9cef9; perspective: 900px; touch-action: manipulation; animation: card-arrive .75s calc(var(--card-index)*.1s) var(--ease) backwards; transition: transform .35s var(--ease); }
 .summon-card:hover { transform: translateY(-9px); }
 .summon-card:active { transform: translateY(-3px) scale(.97); }
@@ -226,7 +226,7 @@ body:has(.viewer[open],.connect-dialog[open]) { overflow: hidden; }
 @media (max-width:760px) {
   .gallery { margin: 0 -7px; }
   .artboard.has-cards,.artboard.is-summoning { min-height: 350px; padding: 24px 9px; }
-  .card-deck { gap: 8px; }
+  .card-deck { gap: 24px; }
   .summon-card:hover { transform: none; }
   .card-back,.card-front { border-radius: 10px; }
   .card-back-title { font-size: 5px; letter-spacing: .8px; }
