@@ -16,6 +16,7 @@ if (location.hash) history.replaceState(null, '', location.pathname + location.s
 connection ||= { bridge: localPage ? location.origin : '', key: '' };
 if (connection.expiresAt && connection.expiresAt <= Date.now()) connection.key = '';
 let imageLoad, blobUrls = [], readyCards = [], connectionVersion = 0, stateRevision = 0;
+let viewerIndex = 0, viewerAnimation;
 let lastState;
 let selectedCharacter;
 const characterButtons = [];
@@ -125,13 +126,29 @@ function resetImage() {
   for (const url of blobUrls) URL.revokeObjectURL(url);
   blobUrls = [];
   $('full-image').removeAttribute('src');
+  $('download-image').removeAttribute('href');
 }
 function openCard(index) {
   if (view.disabled || latest?.id !== lastImageId || !readyCards[index]) return;
+  const switching = $('viewer').open && viewerIndex !== index;
+  viewerIndex = index;
   $('full-image').src = readyCards[index].src;
   $('viewer').style.setProperty('--image-ratio', readyCards[index].naturalWidth / readyCards[index].naturalHeight || .6);
   $('viewer-caption').textContent = `${latest.characterName || '这次的相遇'} · ${String(index + 1).padStart(2, '0')} / ${readyCards.length}`;
-  $('viewer').showModal();
+  $('full-image').alt = `${latest.characterName || '生成图片'} · 第 ${index + 1} 张完整预览`;
+  const filename = (latest.characterName || 'Anima').replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_');
+  $('download-image').href = readyCards[index].src;
+  $('download-image').download = `${filename}-${latest.id.slice(0, 8)}-${String(index + 1).padStart(2, '0')}.${readyCards[index].downloadExtension || 'png'}`;
+  $('viewer-prev').disabled = $('viewer-next').disabled = readyCards.length < 2;
+  viewerAnimation?.cancel();
+  if (switching && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    viewerAnimation = $('full-image').animate?.([{ opacity: .5 }, { opacity: 1 }], { duration: 180, easing: 'ease-out' });
+  }
+  if (!$('viewer').open) $('viewer').showModal();
+}
+function shiftViewer(direction) {
+  if (!$('viewer').open || readyCards.length < 2) return;
+  openCard((viewerIndex + direction + readyCards.length) % readyCards.length);
 }
 function makeCard(decoded, index, draw) {
   const card = document.createElement('button');
@@ -168,6 +185,7 @@ async function loadImage(image) {
         if (!isCurrent()) return null;
         const url = URL.createObjectURL(blob); nextUrls.push(url);
         const decoded = new Image(); decoded.src = url;
+        decoded.downloadExtension = ({ 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/avif': 'avif', 'image/gif': 'gif', 'image/svg+xml': 'svg', 'image/bmp': 'bmp' })[blob.type] || 'png';
         // All three are decoded offscreen before any card can be revealed.
         await decoded.decode();
         return decoded;
@@ -181,6 +199,7 @@ async function loadImage(image) {
     $('result').replaceChildren(...cards);
     $('viewer').close();
     $('full-image').removeAttribute('src');
+    $('download-image').removeAttribute('href');
     for (const url of blobUrls) URL.revokeObjectURL(url);
     blobUrls = nextUrls.splice(0);
     readyCards = decoded;
@@ -276,6 +295,12 @@ generate.addEventListener('click', async () => {
   finally { submitting = false; await refresh(); }
 });
 view.addEventListener('click', () => openCard(0));
+$('viewer-prev').addEventListener('click', () => shiftViewer(-1));
+$('viewer-next').addEventListener('click', () => shiftViewer(1));
+$('viewer').addEventListener('keydown', event => {
+  if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+  event.preventDefault(); shiftViewer(event.key === 'ArrowLeft' ? -1 : 1);
+});
 $('close-viewer').addEventListener('click', () => $('viewer').close());
 $('viewer').addEventListener('click', event => { if (event.target === $('viewer')) $('viewer').close(); });
 setInterval(() => {

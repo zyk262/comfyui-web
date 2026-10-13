@@ -61,8 +61,8 @@ async function browser() {
     card(index) { return element('result').children[index]; },
     setState(value) { state = value; },
     delayState() { pendingState = deferred(); return pendingState; },
-    async finishDownload(index, id) {
-      downloads[index].resolve({ ok: true, blob: async () => ({ id }) }); await tick();
+    async finishDownload(index, id, type = 'image/png') {
+      downloads[index].resolve({ ok: true, blob: async () => ({ id, type }) }); await tick();
     },
     async showFirst() {
       this.app.render(idle(image('old')));
@@ -139,6 +139,35 @@ test('three cards are committed together only after every download and decode, a
   b.card(1).listeners.click();
   assert.equal(b.element('full-image').src, 'blob:b');
   assert.match(b.element('viewer-caption').textContent, /02 \/ 3/);
+});
+
+test('viewer navigation wraps, keyboard switching follows the current card, and download uses its original blob and file type', async () => {
+  const b=await browser();
+  const draw={id:'set12345',characterName:'测试角色',seconds:20,images:[image('a'),image('b'),image('c')]};
+  b.app.render(idle(draw));
+  await b.finishDownload(0,'a','image/jpeg');
+  await b.finishDownload(1,'b','image/png');
+  await b.finishDownload(2,'c','image/webp');
+  for(const decode of b.decodes)decode.resolve(); await tick();
+  b.card(0).listeners.click();
+  assert.equal(b.element('download-image').href,'blob:a');
+  assert.match(b.element('download-image').download,/01\.jpg$/);
+  b.element('viewer-prev').listeners.click();
+  assert.equal(b.element('full-image').src,'blob:c');
+  assert.equal(b.element('download-image').href,'blob:c');
+  assert.match(b.element('download-image').download,/03\.webp$/);
+  b.element('viewer-next').listeners.click();
+  assert.equal(b.element('full-image').src,'blob:a');
+  let prevented=false;
+  b.element('viewer').listeners.keydown({key:'ArrowRight',preventDefault(){prevented=true;}});
+  assert.equal(prevented,true);
+  assert.equal(b.element('full-image').src,'blob:b');
+  assert.match(b.element('viewer-caption').textContent,/02 \/ 3/);
+  assert.equal(b.element('download-image').href,'blob:b');
+  assert.equal(b.element('viewer-prev').disabled,false);
+  b.app.reconnect();
+  assert.equal(b.element('viewer').open,false);
+  assert.equal(b.element('download-image').href,undefined,'retired session must not retain a download link');
 });
 
 test('failed decode never reports completion or exposes old image, and next poll retries', async () => {

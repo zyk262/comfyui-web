@@ -51,7 +51,11 @@
     </main>
     <footer class="site-footer"><span>雪落无声，想象有形。</span><span>MADE OF SNOW & A LITTLE IMAGINATION <span class="footer-spark">✦</span></span></footer>
   </div>
-  <dialog id="viewer" class="viewer" aria-label="查看生成图片"><button id="close-viewer" class="close-viewer" type="button" aria-label="关闭图片">×</button><img id="full-image" alt="生成图片的完整预览"><p id="viewer-caption" class="viewer-caption"></p></dialog>
+  <dialog id="viewer" class="viewer" aria-label="查看生成图片">
+    <div class="viewer-toolbar"><a id="download-image" class="viewer-tool" download aria-label="下载当前图片" title="下载当前图片"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M4 16v4h16v-4"/></svg></a><button id="close-viewer" class="close-viewer" type="button" aria-label="关闭图片" title="关闭图片">×</button></div>
+    <div class="viewer-media"><button id="viewer-prev" class="viewer-arrow" type="button" aria-label="上一张图片" title="上一张图片" disabled>&lt;</button><img id="full-image" alt="生成图片的完整预览"><button id="viewer-next" class="viewer-arrow" type="button" aria-label="下一张图片" title="下一张图片" disabled>&gt;</button></div>
+    <p id="viewer-caption" class="viewer-caption" aria-live="polite"></p>
+  </dialog>
   <dialog id="connect-dialog" class="connect-dialog glass" aria-labelledby="connect-title">
     <button id="close-connect" class="close-viewer" type="button" aria-label="关闭连接设置">×</button>
     <span class="connect-spark">✳</span><h2 id="connect-title">进入你的画室</h2>
