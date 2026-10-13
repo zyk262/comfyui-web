@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { parseCharacters, QUALITY_PROMPT } from '../characters.mjs';
-import { prepareWorkflow, characterRandomMetadata } from '../workflow.mjs';
+import { prepareWorkflow, characterRandomMetadata, ARTIST_TAGS } from '../workflow.mjs';
 
 const characters = parseCharacters(await readFile(new URL('../角色.txt', import.meta.url), 'utf8'));
 const original = JSON.parse(await readFile(new URL('../anima turbo.json', import.meta.url), 'utf8'));
@@ -16,20 +16,22 @@ test('all published buttons map to the exact character catalog, with valid uniqu
   assert.throws(() => parseCharacters('名称但没有提示词'), /第 1 行/);
 });
 
-test('every character reaches character_tags exactly, quality stays fixed, and only the other four selectors randomize', () => {
+test('every character reaches character_tags exactly, quality and artists stay fixed, and only clothing, pose and background randomize', () => {
   const snapshot = structuredClone(original);
   for (const character of characters) {
     const workflow = prepareWorkflow(original, true, character);
     const [id, plus] = Object.entries(workflow).find(([, node]) => node.class_type === 'AnimaPromptPlusClipEncode');
     assert.equal(plus.inputs.character_tags, character.prompt);
     assert.equal(plus.inputs.quality_prompt, QUALITY_PROMPT);
+    assert.equal(plus.inputs.artist_tags, ARTIST_TAGS);
     assert.equal(plus.inputs.extra_prompt, '');
-    for (const field of ['artist_tags', 'clothing_tags', 'pose_tags', 'background_tags']) assert.equal(plus.inputs[field], '');
+    for (const field of ['clothing_tags', 'pose_tags', 'background_tags']) assert.equal(plus.inputs[field], '');
     assert.equal(Object.values(workflow).some(node => node.class_type === 'AnimaPromptComposer'), false, 'no extra random character can be appended');
     const metadata = characterRandomMetadata(workflow).extra_pnginfo.workflow.nodes[0];
     assert.equal(String(metadata.id), id);
-    assert.deepEqual(metadata.properties.anima_selector_random, { artist: true, character: false, clothing: true, pose: true, background: true });
+    assert.deepEqual(metadata.properties.anima_selector_random, { artist: false, character: false, clothing: true, pose: true, background: true });
     assert.equal(metadata.widgets_values.character_tags, character.prompt);
+    assert.equal(metadata.widgets_values.artist_tags, ARTIST_TAGS);
     for (const [nodeId, node] of Object.entries(snapshot)) {
       if (node.class_type === 'KSampler') {
         const { seed, ...before } = node.inputs;

@@ -1,6 +1,8 @@
 import { randomInt, randomBytes } from 'node:crypto';
 import { QUALITY_PROMPT } from './characters.mjs';
 
+export const ARTIST_TAGS = String.raw`@naga u, @saku usako \(rabbit\), @tsukiman, @hana kazari, `;
+
 export function prepareWorkflow(original, randomize = true, character = null) {
   const workflow = structuredClone(original);
   if (!workflow || Array.isArray(workflow) || workflow.nodes) {
@@ -12,7 +14,8 @@ export function prepareWorkflow(original, randomize = true, character = null) {
     if (!character.prompt?.trim()) throw new Error('所选角色的提示词为空。');
     plus.inputs.quality_prompt = QUALITY_PROMPT;
     plus.inputs.character_tags = character.prompt;
-    for (const field of ['artist_tags', 'clothing_tags', 'pose_tags', 'background_tags']) plus.inputs[field] = '';
+    plus.inputs.artist_tags = ARTIST_TAGS;
+    for (const field of ['clothing_tags', 'pose_tags', 'background_tags']) plus.inputs[field] = '';
   }
   const fields = ['quality_prompt', 'artist_tags', 'character_tags', 'clothing_tags', 'pose_tags', 'background_tags', 'extra_prompt'];
   if (plus && fields.every(key => !plus.inputs[key])) {
@@ -47,7 +50,7 @@ export function characterRandomMetadata(workflow) {
   return { extra_pnginfo: { workflow: { nodes: Object.entries(workflow)
     .filter(([, node]) => node.class_type === 'AnimaPromptPlusClipEncode')
     .map(([id, node]) => ({ id: Number(id), type: node.class_type,
-      properties: { anima_selector_random: { artist: true, character: false, clothing: true, pose: true, background: true } },
+      properties: { anima_selector_random: { artist: false, character: false, clothing: true, pose: true, background: true } },
       widgets_values: Object.fromEntries(Object.entries(node.inputs).filter(([, value]) => !Array.isArray(value)))
     })) } } };
 }

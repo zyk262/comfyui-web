@@ -52,7 +52,7 @@ HTTPS 请求和返回图片经 Cloudflare 中转。工作流未调用付费生�
 
 `proxyUrl` 默认 `http://127.0.0.1:7890`。电脑代理在线且 Node.js 支持动态代理时，GitHub 更新与 CLI 下载会通过它，localhost 请求直接连接。代理关闭时使用直连。当前电脑的 Node.js 支持该功能。
 
-原始 `anima turbo.json` 保持不变。生成接口仅接收角色 ID，从电脑端 `角色.txt` 读取提示词，写入提交副本中 `AnimaPromptPlusClipEncode.character_tags`；`quality_prompt` 固定为用户指定的正向质量提示词。通过插件原生 `anima_selector_random` 元数据关闭角色随机，并开启画师、服装、姿势与背景随机。采样种子每次更新，模型、8 步采样、CFG 1、采样器和 920×1536 分辨率保持原设置。
+原始 `anima turbo.json` 保持不变。生成接口仅接收角色 ID，从电脑端 `角色.txt` 读取提示词，写入提交副本中 `AnimaPromptPlusClipEncode.character_tags`；`quality_prompt` 固定为用户指定的正向质量提示词。`artist_tags` 固定为 `@naga u, @saku usako \(rabbit\), @tsukiman, @hana kazari, `。通过插件原生 `anima_selector_random` 元数据关闭角色和画师随机，并开启服装、姿势与背景随机。采样种子每次更新，模型、8 步采样、CFG 1、采样器和 920×1536 分辨率保持原设置。
 
 `角色.txt` 每行格式为“中文名称：提示词”。`public/characters.json` 只含网页显示的角色 ID 与名称；增删或重命名角色时需同步此文件并重新发布网页。仅修改已有角色的提示词时，电脑端下一次生成会自动读取。桥接代码更新后需重新启动 `start-remote.cmd`，网页则刷新即可。
 
