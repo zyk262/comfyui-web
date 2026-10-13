@@ -7,8 +7,8 @@ import { prepareWorkflow, characterRandomMetadata } from '../workflow.mjs';
 const characters = parseCharacters(await readFile(new URL('../角色.txt', import.meta.url), 'utf8'));
 const original = JSON.parse(await readFile(new URL('../anima turbo.json', import.meta.url), 'utf8'));
 
-test('all ten published buttons map to the exact character catalog, with valid unique names', async () => {
-  assert.equal(characters.length, 10);
+test('all published buttons map to the exact character catalog, with valid unique names', async () => {
+  assert.ok(characters.length > 0);
   const published = JSON.parse(await readFile(new URL('../public/characters.json', import.meta.url), 'utf8'));
   assert.deepEqual(published, characters.map(({ id, name }) => ({ id, name })));
   assert.equal(parseCharacters('\uFEFF角色: 1girl, blue eyes,\r\n')[0].prompt, '1girl, blue eyes,');

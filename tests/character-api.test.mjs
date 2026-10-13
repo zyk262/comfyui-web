@@ -10,6 +10,8 @@ import { parseCharacters, QUALITY_PROMPT } from '../characters.mjs';
 
 test('authenticated Generate validates the character ID and sends catalog prompts plus plugin random switches', { timeout: 15000 }, async () => {
   const root = fileURLToPath(new URL('../', import.meta.url));
+  const catalog = parseCharacters(await readFile(path.join(root, '角色.txt'), 'utf8'));
+  const selected = catalog[0];
   const local = await mkdtemp(path.join(os.tmpdir(), 'yuki-character-api-'));
   let submitted;
   const comfy = http.createServer(async (req, res) => {
@@ -49,17 +51,18 @@ test('authenticated Generate validates the character ID and sends catalog prompt
     assert.equal((await request({ characterId: '不存在的角色' })).status, 400);
     assert.equal((await request({})).status, 400);
     assert.equal(submitted, undefined);
-    const response = await request({ characterId: '卡芙卡', character_tags: 'untrusted override', quality_prompt: 'untrusted override' });
+    const response = await request({ characterId: selected.id, character_tags: 'untrusted override', quality_prompt: 'untrusted override' });
     assert.equal(response.status, 202, await response.clone().text());
-    assert.equal((await response.json()).characterName, '卡芙卡');
+    assert.equal((await response.json()).characterName, selected.name);
     const [id, plus] = Object.entries(submitted.prompt).find(([, node]) => node.class_type === 'AnimaPromptPlusClipEncode');
-    const catalog = parseCharacters(await readFile(path.join(root, '角色.txt'), 'utf8'));
-    assert.equal(plus.inputs.character_tags, catalog.find(item => item.id === '卡芙卡').prompt);
+    assert.equal(plus.inputs.character_tags, selected.prompt);
     assert.equal(plus.inputs.quality_prompt, QUALITY_PROMPT);
     const metadata = submitted.extra_data.extra_pnginfo.workflow.nodes.find(node => String(node.id) === id);
     assert.deepEqual(metadata.properties.anima_selector_random, { artist: true, character: false, clothing: true, pose: true, background: true });
-    assert.equal((await fetch(origin + '/characters.json')).status, 200);
-    assert.equal((await request({ characterId: '胡桃' })).status, 409);
+    const published = await fetch(origin + '/characters.json');
+    assert.equal(published.status, 200);
+    assert.deepEqual(await published.json(), catalog.map(({ id, name }) => ({ id, name })));
+    assert.equal((await request({ characterId: selected.id })).status, 409);
   } finally {
     child.kill('SIGTERM');
     if (child.exitCode === null) await new Promise(resolve => child.once('exit', resolve));
