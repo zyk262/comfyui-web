@@ -62,6 +62,11 @@ test('authenticated Generate validates the character ID and sends catalog prompt
     const metadata = submitted.extra_data.extra_pnginfo.workflow.nodes.find(node => String(node.id) === id);
     assert.deepEqual(metadata.properties.anima_selector_random, { artist: false, character: false, clothing: true, pose: true, background: true });
     assert.equal(metadata.widgets_values.artist_tags, artists);
+    const sampler = Object.values(submitted.prompt).find(node => node.class_type === 'KSampler');
+    const negative = submitted.prompt[String(sampler.inputs.negative[0])];
+    assert.equal(negative.class_type, 'CLIPTextEncode');
+    assert.equal(negative.inputs.text, 'worst quality, low quality, score_1, score_2, score_3, artist name');
+    assert.equal(plus.inputs.extra_prompt, '');
     const published = await fetch(origin + '/characters.json');
     assert.equal(published.status, 200);
     assert.deepEqual(await published.json(), catalog.map(({ id, name }) => ({ id, name })));

@@ -42,7 +42,7 @@
   },
   "5": {
     "inputs": {
-      "text": "worst quality, low quality, score_1, score_2, score_3, blurry, jpeg artifacts, sepia",
+      "text": "worst quality, low quality, score_1, score_2, score_3, artist name",
       "clip": [
         "2",
         0
