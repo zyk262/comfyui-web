@@ -68,6 +68,24 @@ async function loadWorkflow(character) {
   return workflow;
 }
 
+const DRAW_COUNT = 3;
+function publicActive(job) {
+  if (!job) return null;
+  const { character, results, ...visible } = job;
+  return visible;
+}
+async function submitPicture(character) {
+  const workflow = await loadWorkflow(character);
+  const response = await comfy('/prompt', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt: workflow, client_id: clientId, extra_data: characterRandomMetadata(workflow) })
+  });
+  const result = await response.json();
+  if (!result.prompt_id) throw new Error('ComfyUI 没有返回任务编号。');
+  const sampler = Object.values(workflow).find(n => n.class_type === 'KSampler');
+  return { promptId: result.prompt_id, seed: sampler?.inputs.seed, cardStartedAt: Date.now(), currentProgress: 0 };
+}
+
 function listenProgress() {
   if (socket && [WebSocket.OPEN, WebSocket.CONNECTING].includes(socket.readyState)) return;
   const url = new URL('/ws', comfyUrl);
@@ -83,7 +101,8 @@ function listenProgress() {
       if (type === 'execution_start') active.stage = '正在准备画笔';
       if (type === 'progress') {
         active.stage = '正在绘制你的画面';
-        active.progress = Math.round((data.value / data.max) * 100);
+        active.currentProgress = Math.round((data.value / data.max) * 100);
+        active.progress = Math.round(((active.completed || 0) * 100 + active.currentProgress) / (active.total || 1));
       }
       if (type === 'executing' && data.node) {
         active.stage = data.node === '18' ? '正在保存图片' : active.stage;
@@ -107,6 +126,7 @@ async function refreshJob() {
   if (!state.active || checking) return;
   checking = true;
   const job = state.active;
+  let advancing = false;
   try {
     const history = await (await comfy(`/history/${encodeURIComponent(job.promptId)}`)).json();
     connected = true;
@@ -117,7 +137,7 @@ async function refreshJob() {
       const waiting = (queue.queue_pending || []).some(row => row[1] === job.promptId);
       if (running) job.stage = job.progress ? '正在绘制你的画面' : '正在准备画笔';
       else if (waiting) job.stage = '已加入队列，等待画笔';
-      else if (Date.now() - job.startedAt > 10000) {
+      else if (Date.now() - (job.cardStartedAt || job.startedAt) > 10000) {
         state.error = '任务已离开 ComfyUI 队列，可能被移除或服务已重启。可以重新生成。';
         state.active = null;
         await save();
@@ -135,15 +155,38 @@ async function refreshJob() {
     const bytes = Buffer.from(await response.arrayBuffer());
     const contentType = response.headers.get('content-type') || 'image/png';
     if (!contentType.startsWith('image/')) throw new Error('ComfyUI 返回的内容不是图片。');
-    await writeFile(path.join(localDir, 'images', `${job.id}.image`), bytes);
-    state.latest = { id: job.id, completedAt: Date.now(), seconds: Math.round((Date.now() - job.startedAt) / 1000), seed: job.seed, contentType, imageUrl: `/api/images/${job.id}` };
+    if (state.active !== job) return;
+    const total = job.total || 1;
+    const index = job.completed || 0;
+    const imageId = total === 1 ? job.id : `${job.id}-${index + 1}`;
+    await writeFile(path.join(localDir, 'images', `${imageId}.image`), bytes);
+    if (state.active !== job) return;
+    job.results ||= [];
+    job.results.push({ id: imageId, seed: job.seed, contentType, imageUrl: `/api/images/${imageId}` });
+    job.completed = job.results.length;
+    job.progress = Math.round(job.completed / total * 100);
+    if (job.completed < total) {
+      job.stage = '正在准备下一张卡片';
+      advancing = true;
+      const next = await submitPicture(job.character);
+      if (state.active !== job) return;
+      Object.assign(job, next);
+      job.stage = '已加入队列，等待画笔';
+      await save();
+      return;
+    }
+    state.latest = { id: job.id, completedAt: Date.now(), seconds: Math.round((Date.now() - job.startedAt) / 1000), characterName: job.characterName, images: job.results, ...job.results[0] };
+    // The draw ID identifies the whole set; image IDs identify individual files.
+    state.latest.id = job.id;
     state.active = null;
     state.error = null;
     await save();
     console.log(`生成完成：${job.promptId}，${state.latest.seconds} 秒`);
   } catch (error) {
-    if (error.message.startsWith('无法连接')) connected = false;
-    else {
+    if (state.active !== job) return;
+    const unreachable = error.message.startsWith('无法连接');
+    if (unreachable) connected = false;
+    if (!unreachable || advancing) {
       state.error = error.message;
       state.active = null;
       await save();
@@ -194,7 +237,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'GET' && url.pathname === '/api/session' && access.localSession) return json(res, 200, { accessKey: token });
     if (req.method === 'GET' && url.pathname === '/api/state') {
-      return json(res, 200, { ...state, connected, submitting });
+      return json(res, 200, { ...state, active: publicActive(state.active), connected, submitting });
     }
     if (req.method === 'POST' && url.pathname === '/api/generate') {
       if (state.active || submitting) return json(res, 409, { error: '已有图片正在生成，请等待完成。' });
@@ -212,27 +255,21 @@ const server = http.createServer(async (req, res) => {
       if (state.active || submitting) return json(res, 409, { error: '已有图片正在生成，请等待完成。' });
       submitting = true;
       try {
-        const workflow = await loadWorkflow(character);
-        const response = await comfy('/prompt', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: workflow, client_id: clientId, extra_data: characterRandomMetadata(workflow) })
-        });
-        const result = await response.json();
-        if (!result.prompt_id) throw new Error('ComfyUI 没有返回任务编号。');
-        const sampler = Object.values(workflow).find(n => n.class_type === 'KSampler');
-        state.active = { id: randomUUID(), promptId: result.prompt_id, startedAt: Date.now(), progress: 0, stage: '已加入队列，等待画笔', seed: sampler?.inputs.seed, characterId: character.id, characterName: character.name };
+        const first = await submitPicture(character);
+        state.active = { id: randomUUID(), ...first, startedAt: Date.now(), total: DRAW_COUNT, completed: 0, results: [], character, progress: 0, stage: '已加入队列，等待画笔', characterId: character.id, characterName: character.name };
         state.error = null;
         connected = true;
         await save();
-        console.log(`已提交生成任务：${result.prompt_id}`);
-        return json(res, 202, state.active);
+        console.log(`已提交三张抽卡任务：${first.promptId}`);
+        return json(res, 202, publicActive(state.active));
       } finally { submitting = false; }
     }
     if (req.method === 'GET' && url.pathname.startsWith('/api/images/')) {
       const id = url.pathname.slice('/api/images/'.length);
-      if (!state.latest || id !== state.latest.id) return json(res, 404, { error: '图片不存在，请生成一张新图片。' });
+      const image = (state.latest?.images || (state.latest ? [state.latest] : [])).find(item => item.id === id);
+      if (!image) return json(res, 404, { error: '图片不存在，请重新抽取卡片。' });
       const bytes = await readFile(path.join(localDir, 'images', `${id}.image`));
-      res.writeHead(200, { 'Content-Type': state.latest.contentType, 'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff' });
+      res.writeHead(200, { 'Content-Type': image.contentType, 'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff' });
       return res.end(bytes);
     }
     if (req.method === 'GET' && staticFiles.has(url.pathname)) {

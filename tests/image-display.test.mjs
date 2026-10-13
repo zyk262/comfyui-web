@@ -19,9 +19,11 @@ async function browser() {
   let state = idle(null), pendingState;
   function element(id) {
     if (!elements.has(id)) elements.set(id, {
-      hidden: true, disabled: false, textContent: '', style: {}, listeners: {},
+      hidden: true, disabled: false, textContent: '', style: { setProperty() {} }, listeners: {}, children: [],
       classList: { toggle() {}, remove() {} },
-      append() {}, setAttribute() {},
+      append(...children) { this.children.push(...children); }, setAttribute() {},
+      replaceChildren(...children) { this.children = children; },
+      removeAttribute(name) { delete this[name]; },
       addEventListener(type, handler) { this.listeners[type] = handler; },
       showModal() { this.open = true; }, close() { this.open = false; },
       getContext() { return { setTransform() {} }; }
@@ -55,6 +57,8 @@ async function browser() {
   await tick();
   return {
     app: context.app, element, downloads, decodes, revoked,
+    shown() { return element('result').children.map(card => card.children[0].children[1].children[0].src); },
+    card(index) { return element('result').children[index]; },
     setState(value) { state = value; },
     delayState() { pendingState = deferred(); return pendingState; },
     async finishDownload(index, id) {
@@ -63,6 +67,7 @@ async function browser() {
     async showFirst() {
       this.app.render(idle(image('old')));
       await this.finishDownload(0, 'old'); decodes[0].resolve(); await tick();
+      element('view').listeners.click();
     }
   };
 }
@@ -85,7 +90,8 @@ test('old image stays hidden through slow transfer and decode; repeated polls fe
   assert.equal(b.element('result').hidden, true);
   assert.equal(b.element('full-image').src, 'blob:old');
   b.decodes[1].resolve(); await tick();
-  assert.equal(b.element('result').src, 'blob:new');
+  assert.deepEqual(b.shown(), ['blob:new']);
+  b.card(0).listeners.click();
   assert.equal(b.element('full-image').src, 'blob:new');
   assert.equal(b.element('result').hidden, false);
   assert.equal(b.element('drawing-overlay').hidden, true);
@@ -100,7 +106,7 @@ test('late decoded image cannot replace a newer result or cross a reconnection',
   await b.finishDownload(0, 'obsolete');
   b.app.render(idle(image('new')));
   b.decodes[0].resolve(); await tick();
-  assert.equal(b.element('result').src, undefined);
+  assert.deepEqual(b.shown(), []);
   assert.ok(b.revoked.includes('blob:obsolete'));
   await b.finishDownload(1, 'new');
   b.app.reconnect();
@@ -108,6 +114,31 @@ test('late decoded image cannot replace a newer result or cross a reconnection',
   assert.equal(b.element('result').hidden, true);
   assert.equal(b.element('view').disabled, true);
   assert.ok(b.revoked.includes('blob:new'));
+});
+
+test('three cards are committed together only after every download and decode, and each opens its own image', async () => {
+  const b = await browser();
+  const draw = { id: 'triple', seconds: 30, characterName: '测试角色', images: [image('a'), image('b'), image('c')] };
+  b.setState(idle(draw));
+  b.app.render(idle(draw));
+  await b.app.refresh();
+  assert.equal(b.downloads.length, 3);
+  for (let n = 0; n < 3; n++) await b.finishDownload(n, ['a','b','c'][n]);
+  b.decodes[0].resolve(); b.decodes[1].resolve(); await tick();
+  assert.equal(b.element('result').hidden, true);
+  assert.equal(b.element('view').disabled, true);
+  assert.deepEqual(b.shown(), []);
+  b.app.render(idle(draw));
+  assert.equal(b.downloads.length, 3, 'polling must not start another set during decode');
+  b.decodes[2].resolve(); await tick();
+  assert.deepEqual(b.shown(), ['blob:a','blob:b','blob:c']);
+  assert.equal(b.element('result').hidden, false);
+  const first = b.card(0);
+  b.app.render(idle(draw));
+  assert.equal(b.card(0), first, 'polling must not rebuild the deck or replay the flip');
+  b.card(1).listeners.click();
+  assert.equal(b.element('full-image').src, 'blob:b');
+  assert.match(b.element('viewer-caption').textContent, /02 \/ 3/);
 });
 
 test('failed decode never reports completion or exposes old image, and next poll retries', async () => {
@@ -126,6 +157,21 @@ test('failed decode never reports completion or exposes old image, and next poll
   await b.finishDownload(2, 'new'); b.decodes[2].resolve(); await tick();
   assert.equal(b.element('result').hidden, false);
   assert.equal(b.element('error').hidden, true);
+});
+
+test('one broken card cannot reveal the other two and all temporary image URLs are released', async () => {
+  const b=await browser();
+  const draw={id:'broken-set',seconds:15,images:[image('a'),image('b'),image('c')]};
+  b.app.render(idle(draw));
+  for(let index=0;index<3;index++)await b.finishDownload(index,['a','b','c'][index]);
+  b.decodes[0].resolve(); b.decodes[1].reject(new Error('bad card')); b.decodes[2].resolve(); await tick();
+  assert.deepEqual(b.shown(),[]);
+  assert.equal(b.element('result').hidden,true);
+  assert.equal(b.element('view').disabled,true);
+  assert.equal(b.element('error').hidden,false);
+  assert.deepEqual(b.revoked.sort(),['blob:a','blob:b','blob:c']);
+  b.app.render(idle(draw));
+  assert.equal(b.downloads.length,6,'retry loads a complete new set');
 });
 
 test('a state poll started before Generate cannot flash the previous result after submission', async () => {

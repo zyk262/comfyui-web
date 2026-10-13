@@ -15,7 +15,7 @@ try { connection = JSON.parse(sessionStorage.getItem(storageKey)); } catch {}
 if (location.hash) history.replaceState(null, '', location.pathname + location.search);
 connection ||= { bridge: localPage ? location.origin : '', key: '' };
 if (connection.expiresAt && connection.expiresAt <= Date.now()) connection.key = '';
-let imageLoad, blobUrl, connectionVersion = 0, stateRevision = 0;
+let imageLoad, blobUrls = [], readyCards = [], connectionVersion = 0, stateRevision = 0;
 let lastState;
 let selectedCharacter;
 const characterButtons = [];
@@ -120,6 +120,35 @@ function resetImage() {
   $('result').hidden = true;
   view.disabled = true;
   $('viewer').close();
+  $('result').replaceChildren();
+  readyCards = [];
+  for (const url of blobUrls) URL.revokeObjectURL(url);
+  blobUrls = [];
+  $('full-image').removeAttribute('src');
+}
+function openCard(index) {
+  if (view.disabled || latest?.id !== lastImageId || !readyCards[index]) return;
+  $('full-image').src = readyCards[index].src;
+  $('viewer').style.setProperty('--image-ratio', readyCards[index].naturalWidth / readyCards[index].naturalHeight || .6);
+  $('viewer-caption').textContent = `${latest.characterName || '这次的相遇'} · ${String(index + 1).padStart(2, '0')} / ${readyCards.length}`;
+  $('viewer').showModal();
+}
+function makeCard(decoded, index, draw) {
+  const card = document.createElement('button');
+  card.type = 'button'; card.className = 'summon-card';
+  card.style.setProperty('--card-index', index);
+  card.setAttribute('aria-label', `放大第 ${index + 1} 张${draw.characterName || ''}图片`);
+  const turn = document.createElement('span'); turn.className = 'card-turn';
+  const back = document.createElement('span'); back.className = 'card-back'; back.setAttribute('aria-hidden', 'true');
+  const seal = document.createElement('span'); seal.className = 'card-seal'; seal.textContent = '☾';
+  const backTitle = document.createElement('span'); backTitle.className = 'card-back-title'; backTitle.textContent = 'YUKI · ANIMA';
+  back.append(seal, backTitle);
+  const front = document.createElement('span'); front.className = 'card-front';
+  decoded.className = 'card-image'; decoded.alt = `${draw.characterName || '随机插画'} · 第 ${index + 1} 张`;
+  const number = document.createElement('span'); number.className = 'card-number'; number.textContent = ['I', 'II', 'III'][index] || String(index + 1);
+  front.append(decoded, number); turn.append(back, front); card.append(turn);
+  card.addEventListener('click', () => openCard(index));
+  return card;
 }
 async function loadImage(image) {
   if (imageLoad?.id === image.id && imageLoad.version === connectionVersion) return;
@@ -127,25 +156,34 @@ async function loadImage(image) {
   const version = connectionVersion;
   const request = { id: image.id, version, controller: new AbortController() };
   imageLoad = request;
-  let next;
+  const nextUrls = [];
   const isCurrent = () => imageLoad === request && version === connectionVersion && latest?.id === image.id && !active && !submitting && !lastState?.submitting;
   try {
-    const response = await fetch(apiUrl(image.imageUrl), { headers: { Authorization: `Bearer ${connection.key}` }, signal: AbortSignal.any([request.controller.signal, AbortSignal.timeout(60000)]), referrerPolicy: 'no-referrer' });
-    if (!response.ok) throw new Error('图片读取失败，请检查连接后重试。');
-    const blob = await response.blob();
+    const images = image.images?.length ? image.images : [image];
+    const settled = await Promise.allSettled(images.map(async item => {
+      try {
+        const response = await fetch(apiUrl(item.imageUrl), { headers: { Authorization: `Bearer ${connection.key}` }, signal: AbortSignal.any([request.controller.signal, AbortSignal.timeout(60000)]), referrerPolicy: 'no-referrer' });
+        if (!response.ok) throw new Error('卡片图片读取失败，请检查连接后重试。');
+        const blob = await response.blob();
+        if (!isCurrent()) return null;
+        const url = URL.createObjectURL(blob); nextUrls.push(url);
+        const decoded = new Image(); decoded.src = url;
+        // All three are decoded offscreen before any card can be revealed.
+        await decoded.decode();
+        return decoded;
+      } catch (error) { request.controller.abort(); throw error; }
+    }));
     if (!isCurrent()) return;
-    next = URL.createObjectURL(blob);
-    // Decode offscreen before swapping: polling must not expose the old image.
-    const decoded = new Image();
-    decoded.src = next;
-    await decoded.decode();
-    if (!isCurrent()) return;
-    const element = $('result');
-    element.src = next;
-    $('full-image').src = next;
-    if (blobUrl) URL.revokeObjectURL(blobUrl);
-    blobUrl = next;
-    next = null;
+    const failed = settled.find(item => item.status === 'rejected');
+    if (failed) throw failed.reason;
+    const decoded = settled.map(item => item.value);
+    const cards = decoded.map((item, index) => makeCard(item, index, image));
+    $('result').replaceChildren(...cards);
+    $('viewer').close();
+    $('full-image').removeAttribute('src');
+    for (const url of blobUrls) URL.revokeObjectURL(url);
+    blobUrls = nextUrls.splice(0);
+    readyCards = decoded;
     lastImageId = image.id;
     clientError = '';
     render(lastState);
@@ -153,10 +191,10 @@ async function loadImage(image) {
     if (isCurrent()) {
       clientError = error.message || '图片加载失败，请稍后重试。';
       $('error').hidden = false; $('error').textContent = clientError;
-      $('status-text').textContent = '图片还未加载成功，正在等待重试。';
+      $('status-text').textContent = '卡片还未加载成功，正在等待重试。';
     }
   } finally {
-    if (next) URL.revokeObjectURL(next);
+    for (const url of nextUrls) URL.revokeObjectURL(url);
     if (imageLoad === request) imageLoad = null;
   }
 }
@@ -170,23 +208,26 @@ function render(state) {
   const waiting = busy || loading;
   const imageReady = !waiting && Boolean(latest && latest.id === lastImageId);
   if (busy || !latest) cancelImageLoad();
+  if (busy) $('viewer').close();
   $('connection').classList.toggle('online', state.connected);
   $('connection-text').textContent = state.connected ? '画室已连接' : '等待 ComfyUI';
   generate.disabled = waiting || !state.connected || !selectedCharacter;
   updateCharacters(waiting);
-  $('generate-label').textContent = loading ? '正在加载新图片' : busy ? '正在生成，请稍候' : '生成一张图片';
+  $('generate-label').textContent = loading ? '正在迎接三张卡片' : busy ? '正在召唤，请稍候' : '抽取三张图片';
   view.disabled = !imageReady;
   $('result').hidden = !imageReady;
   $('placeholder').hidden = imageReady;
-  $('art-caption').textContent = loading ? '新的画面，正在向你走来' : busy ? '等待这一场新的相遇' : imageReady ? '这一次，与你相遇的画面' : '等待一场灵感的初雪';
+  $('artboard').classList.toggle('has-cards', imageReady);
+  $('artboard').classList.toggle('is-summoning', waiting);
+  $('art-caption').textContent = loading ? '三张惊喜，即将一起揭晓' : busy ? '星光正在凝聚，故事尚未揭晓' : imageReady ? '轻点任意卡片，收藏这场相遇' : '三张卡片，三个小小的惊喜';
   $('progress-track').hidden = !waiting;
   $('progress-track').classList.toggle('indeterminate', loading || (busy && !active?.progress));
   $('progress-bar').style.width = `${active?.progress || 0}%`;
   $('drawing-overlay').hidden = !waiting;
-  $('drawing-label').textContent = loading ? '正在加载新图片，请稍候' : '正在让想象变成画面';
+  $('drawing-label').textContent = loading ? '正在加载新图片，三张一起揭晓' : active ? `正在绘制第 ${Math.min((active.completed || 0) + 1, active.total || 3)} / ${active.total || 3} 张卡片` : '星光汇聚，召唤开始';
   $('elapsed').hidden = loading;
   $('status-symbol').textContent = waiting ? '❄' : '✦';
-  $('status-text').textContent = active ? `${active.stage}${active.progress ? ` · ${active.progress}%` : ''}` : submitting || state.submitting ? '正在抽取一个新故事' : loading ? '绘制完成，正在加载新图片…' : !state.connected ? '打开 ComfyUI 后，就可以开始画画了' : imageReady ? `画好了，用了 ${latest.seconds} 秒。点击查看完整图片。` : '准备好了，下一张会是什么呢？';
+  $('status-text').textContent = active ? `第 ${Math.min((active.completed || 0) + 1, active.total || 3)} / ${active.total || 3} 张 · ${active.stage}${active.progress ? ` · ${active.progress}%` : ''}` : submitting || state.submitting ? '正在开启一次新的召唤' : loading ? '绘制完成，正在加载新图片…' : !state.connected ? '打开 ComfyUI 后，就可以开始抽卡了' : imageReady ? `画好了，用了 ${latest.seconds} 秒。点击卡片查看完整图片。` : '准备好了，三份惊喜正在等你。';
   const error = state.error || clientError;
   $('error').hidden = !error;
   $('error').textContent = error || '';
@@ -225,6 +266,7 @@ generate.addEventListener('click', async () => {
   submitting = true;
   clientError = '';
   render({ active, latest, connected: true });
+  if (innerWidth < 760) $('artboard').scrollIntoView?.({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' });
   try {
     const job = await api('/api/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ characterId: selectedCharacter.id }) });
     stateRevision++;
@@ -233,7 +275,7 @@ generate.addEventListener('click', async () => {
   catch (error) { clientError = error.message; }
   finally { submitting = false; await refresh(); }
 });
-view.addEventListener('click', () => { if (!view.disabled && latest?.id === lastImageId) $('viewer').showModal(); });
+view.addEventListener('click', () => openCard(0));
 $('close-viewer').addEventListener('click', () => $('viewer').close());
 $('viewer').addEventListener('click', event => { if (event.target === $('viewer')) $('viewer').close(); });
 setInterval(() => {
